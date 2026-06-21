@@ -2,6 +2,12 @@
 
 AnkiPrep is a premium, offline-first smart flashcard application designed for high-density exam-style multiple-choice question (MCQ) preparation. Built natively using Jetpack Compose and modern Android design principles, AnkiPrep allows users to import standard flashcard decks and practice them through an active recall framework.
 
+<p align="center">
+  <img src="release/mockups/dashboard_mockup.png" width="32%" alt="Dashboard Screen" />
+  <img src="release/mockups/quiz_mockup.png" width="32%" alt="Active Recall Quiz" />
+  <img src="release/mockups/analytics_mockup.png" width="32%" alt="Analytics & Progress" />
+</p>
+
 ---
 
 ## Key Features
