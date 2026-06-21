@@ -36,7 +36,8 @@ google-services.json
 *.hprof
 
 # Release APKs
-release/
+release/*.apk
+!release/mockups/
 
 # Agent / AI assistant artifacts (NEVER push)
 .agent/

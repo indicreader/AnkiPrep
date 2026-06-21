@@ -75,7 +75,12 @@ The compiled release binaries will be saved in the `release/` directory.
 
 ## Download & Availability
 
-AnkiPrep is live and available for download on app stores including:
-*   **Indus Appstore** (Search for "AnkiPrep")
-*   **GitHub Releases** (Download pre-compiled `.apk` packages directly from the `release/` directory)
+AnkiPrep is live and available for download:
+
+<a href="https://www.indusappstore.com" target="_blank">
+  <img src="release/mockups/indus_badge.png" alt="Get it on Indus Appstore" height="55px">
+</a>
+
+*   **Indus Appstore**: Search for "AnkiPrep" within the app store.
+*   **GitHub Releases**: Download pre-compiled `.apk` packages directly from the [Releases](https://github.com/indicreader/AnkiPrep/releases) section or the `release/` directory.
 
