@@ -1,0 +1,60 @@
+# Android / Gradle
+*.iml
+.gradle/
+build/
+local.properties
+.idea/
+*.apk
+*.aab
+*.ap_
+*.apkg
+*.csv
+*.html
+*.md
+*.dex
+*.txt
+*.xml
+# Signing keys
+*.jks
+*.keystore
+
+# Release APKs (distribute separately)
+release/
+
+# Agent / AI assistant artifacts (NEVER push)
+.agent/
+.agents/
+.claude/
+.cursor/
+.jetro/
+.mcp.json
+.windsurfrules
+AGENT.md
+CLAUDE.md
+GEMINI.md
+CONTEXT.md
+PROJECT_KNOWLEDGE.md
+task.md
+graphify-out/
+scratch/
+*.log
+
+# Python virtual environments
+.venv/
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Misc temp files
+*.tmp
+*.bak
+diff.txt
+diff_utf8.txt
+b64.txt
+tree.txt
+# Folders to ignore 
+mockups/
