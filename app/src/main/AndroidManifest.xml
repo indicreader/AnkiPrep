@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- AnkiDroid API Permission -->
+    <uses-permission android:name="com.ichi2.anki.permission.READ_WRITE_DATABASE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Package query visibility for AnkiDroid on Android 11+ -->
+    <queries>
+        <package android:name="com.ichi2.anki" />
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/app_logo"
+        android:roundIcon="@drawable/app_logo"
+        android:label="AnkiPrep"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-6846875306917122~9888257018" />
+        
+        <activity
+            android:name="com.example.flashcardapp.MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- APKG File Import Intent Filters -->
+            <intent-filter android:label="Import Anki Deck">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="file" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="*/*" />
+                <data android:host="*" />
+                <data android:pathPattern=".*\\.apkg" />
+            </intent-filter>
+            <intent-filter android:label="Share to Quiz App">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <!-- CSV File Import Intent Filters -->
+            <intent-filter android:label="Import CSV Deck">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="file" />
+                <data android:scheme="content" />
+                <data android:mimeType="text/csv" />
+                <data android:mimeType="text/comma-separated-values" />
+                <data android:mimeType="text/plain" />
+                <data android:host="*" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name="com.example.flashcardapp.receiver.AlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
+        <receiver
+            android:name="com.example.flashcardapp.receiver.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>

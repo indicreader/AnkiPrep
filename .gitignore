@@ -7,18 +7,20 @@ local.properties
 
 # Log/OS Files
 *.log
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# Android Studio generated files and folders
+# IntelliJ / Android Studio files
+*.iml
+.idea/
 captures/
 .externalNativeBuild/
 .cxx/
-*.aab
 *.apk
+*.aab
+*.ap_
 output-metadata.json
-
-# IntelliJ
-*.iml
-.idea/
 misc.xml
 deploymentTargetDropDown.xml
 render.experimental.xml
@@ -32,3 +34,43 @@ google-services.json
 
 # Android Profiling
 *.hprof
+
+# Release APKs
+release/
+
+# Agent / AI assistant artifacts (NEVER push)
+.agent/
+.agents/
+.claude/
+.cursor/
+.jetro/
+.mcp.json
+.windsurfrules
+AGENT.md
+CLAUDE.md
+GEMINI.md
+CONTEXT.md
+PROJECT_KNOWLEDGE.md
+task.md
+walkthrough.md
+implementation_plan.md
+graphify-out/
+scratch/
+
+# Python virtual environments
+.venv/
+__pycache__/
+*.pyc
+
+# Misc temp files
+*.tmp
+*.bak
+diff.txt
+diff_utf8.txt
+b64.txt
+tree.txt
+mockups/
+
+# Project-specific ignored assets
+*.apkg
+*.csv
