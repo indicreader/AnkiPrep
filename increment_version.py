@@ -16,17 +16,35 @@ def increment_version():
         current_code = int(code_match.group(1))
         current_name_str = name_match.group(1)
         
-        # Parse version name as float
-        try:
-            current_name = float(current_name_str)
-        except ValueError:
-            print(f"Could not parse versionName {current_name_str} as float.")
-            return
+        # Parse version name
+        if '.' in current_name_str:
+            parts = current_name_str.split('.')
+            try:
+                major = int(parts[0])
+                minor = int(parts[1])
+            except ValueError:
+                print(f"Could not parse parts of versionName {current_name_str}")
+                return
+        else:
+            try:
+                major = int(current_name_str)
+                minor = 0
+            except ValueError:
+                print(f"Could not parse versionName {current_name_str} as integer")
+                return
 
         new_code = current_code + 1
-        new_name = current_name + 0.01
-        # Format new name to 2 decimal place to avoid float precision issues
-        new_name_str = f"{new_name:.2f}"
+        
+        # Increment logic
+        minor += 1
+        if minor >= 100:
+            major += 1
+            minor = 0
+            
+        if minor == 0:
+            new_name_str = f"{major}"
+        else:
+            new_name_str = f"{major}.{minor}"
 
         # Replace in content
         content = re.sub(

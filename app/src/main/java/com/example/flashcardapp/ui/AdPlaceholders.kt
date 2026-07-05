@@ -23,8 +23,21 @@ const val ADMOB_BANNER_AD_UNIT_ID = "ca-app-pub-6846875306917122/8983203604"
 @Composable
 fun AdBanner(modifier: Modifier = Modifier, text: String = "Advertisement") {
     val context = LocalContext.current
-    val isPremium = remember { com.example.flashcardapp.data.SettingsRepository.getInstance(context).isPremium }
-    
+    val settingsRepo = remember { com.example.flashcardapp.data.SettingsRepository.getInstance(context) }
+    var isPremium by remember { mutableStateOf(settingsRepo.isPremium) }
+
+    DisposableEffect(settingsRepo) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "is_premium") {
+                isPremium = settingsRepo.isPremium
+            }
+        }
+        settingsRepo.registerOnSharedPreferenceChangeListener(listener)
+        onDispose {
+            settingsRepo.unregisterOnSharedPreferenceChangeListener(listener)
+        }
+    }
+
     if (isPremium) {
         Spacer(modifier = Modifier.height(0.dp))
         return

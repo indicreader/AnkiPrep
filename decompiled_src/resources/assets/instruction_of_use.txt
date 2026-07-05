@@ -1,0 +1,68 @@
+========================================================================
+                          INSTRUCTIONS OF USE
+========================================================================
+
+Welcome to AnkiPrep! Follow these instructions to set up your flashcards, 
+customize your study settings, and maximize your learning efficiency.
+
+------------------------------------------------------------------------
+1. INGESTING YOUR STUDY MATERIAL
+------------------------------------------------------------------------
+AnkiPrep supports two primary ingestion methods:
+
+A) CSV Imports:
+   - Prepare a CSV file where the first column is the question/front of the 
+     card, and the second column is the answer/back of the card.
+   - Example row format: "What is photosynthesis?","Process of converting light to chemical energy."
+   - Go to the deck selection dashboard, select "Import CSV", and select 
+     your file. AnkiPrep automatically generates MCQ options by drawing 
+     semantically matching distractors from other cards in the same dataset.
+
+B) APKG (Anki Package) Imports:
+   - Export your deck from Anki or AnkiWeb as a `.apkg` package.
+   - Select "Import APKG" on the dashboard. AnkiPrep will unpack and load 
+     the cards into your local offline database recursively, preserving 
+     your deck hierarchy.
+
+------------------------------------------------------------------------
+2. CHOOSING YOUR STUDY MODE
+------------------------------------------------------------------------
+Go to Settings to select your preferred study mode:
+
+- Practice Mode:
+  - Instant feedback after every answer.
+  - Displays detailed explanations and allows reviewing the correct choice 
+    immediately to reinforce memory.
+
+- Test Mode:
+  - Strict exam simulator. No immediate feedback.
+  - Answers are submitted silently, and a comprehensive scorecard is 
+    displayed only at the end of the session.
+
+- Revision Mode:
+  - Focuses strictly on your weak areas.
+  - Leverages FSRS memory algorithms to schedule cards you previously answered 
+    incorrectly, ensuring focused reinforcement.
+
+------------------------------------------------------------------------
+3. CUSTOMIZING THE STUDY INTERFACE
+------------------------------------------------------------------------
+Adjust the App settings to fit your preferences:
+- Dark Mode: Toggle between Light Mode and the premium Dark Mode 
+  (Obsidian Bookshelf theme, utilizing obsidian base and soft indigo accents).
+- Font Style: Choose from Default, Serif, Sans-Serif, or Monospace typography.
+- Question Limit: Restrict sessions to 5, 10, 20, 50, or all available cards.
+- Time Limit: Add a countdown timer (15s, 30s, 60s, or unlimited) per question.
+- Vibration Feedback: Toggle haptic feedback on/off for answers.
+
+------------------------------------------------------------------------
+4. DATABASE & DATA MANAGEMENT
+------------------------------------------------------------------------
+- Sync Now: Updates your active decks with any changes and re-builds 
+  semantic relationships.
+- Clear Cache: Deletes cached layouts and resets study progress if you 
+  want to start fresh.
+- Note: Since AnkiPrep is local-first, clearing all application data from 
+  Android system settings will wipe the local database. Keep your source 
+  CSV/APKG files backed up.
+========================================================================

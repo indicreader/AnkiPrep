@@ -67,18 +67,30 @@ fun ImageFieldPicker(
     label: String,
     currentImagePath: String?,
     onImagePicked: (String) -> Unit,
-    onImageRemoved: () -> Unit
+    onImageRemoved: () -> Unit,
+    searchSuggestion: String? = null
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    var showSearchDialog by remember { mutableStateOf(false) }
+
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let {
             val path = ImageStorageManager.copyImageToLocalStorage(context, it)
-            if (path != null) {
-                onImagePicked(path)
-            }
+            if (path != null) onImagePicked(path)
         }
+    }
+
+    if (showSearchDialog) {
+        ImageWebSearchDialog(
+            initialQuery = searchSuggestion?.take(80) ?: "",
+            onDismiss = { showSearchDialog = false },
+            onImageSelected = { path ->
+                onImagePicked(path)
+                showSearchDialog = false
+            }
+        )
     }
 
     Row(
@@ -99,13 +111,33 @@ fun ImageFieldPicker(
             }
         } else {
             OutlinedButton(
-                onClick = { launcher.launch("image/*") }
+                onClick = { launcher.launch("image/*") },
+                modifier = Modifier.weight(1f)
             ) {
-                Text("+ Add $label Image")
+                Icon(
+                    androidx.compose.material.icons.Icons.Outlined.Image,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("Gallery", maxLines = 1)
+            }
+            OutlinedButton(
+                onClick = { showSearchDialog = true },
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    androidx.compose.material.icons.Icons.Outlined.Search,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text("Search Web", maxLines = 1)
             }
         }
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -282,7 +314,8 @@ fun McqEditorDialog(
                         label = "Question",
                         currentImagePath = frontImage,
                         onImagePicked = { frontImage = it },
-                        onImageRemoved = { frontImage = null }
+                        onImageRemoved = { frontImage = null },
+                        searchSuggestion = questionText
                     )
 
                     OutlinedTextField(
@@ -296,7 +329,8 @@ fun McqEditorDialog(
                         label = "Answer",
                         currentImagePath = backImage,
                         onImagePicked = { backImage = it },
-                        onImageRemoved = { backImage = null }
+                        onImageRemoved = { backImage = null },
+                        searchSuggestion = questionText
                     )
 
                     if (isMcqType) {
@@ -351,7 +385,8 @@ fun McqEditorDialog(
                         label = "Explanation",
                         currentImagePath = explanationImage,
                         onImagePicked = { explanationImage = it },
-                        onImageRemoved = { explanationImage = null }
+                        onImageRemoved = { explanationImage = null },
+                        searchSuggestion = questionText
                     )
                 }
 

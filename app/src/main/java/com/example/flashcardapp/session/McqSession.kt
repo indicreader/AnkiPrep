@@ -21,7 +21,12 @@ enum class McqSessionMode {
     /**
      * Revision Mode: Focuses on weak cards only (instant feedback).
      */
-    REVISION
+    REVISION,
+
+    /**
+     * Priority Rated Mode: Focuses on rated cards only (instant feedback).
+     */
+    RATED_PRIORITY
 }
 
 /**
@@ -117,7 +122,7 @@ class McqSessionManager(
     /**
      * Registers selection of an option for the current question.
      *
-     * In [McqSessionMode.PRACTICE] or [McqSessionMode.REVISION], this locks the answer,
+     * In [McqSessionMode.PRACTICE], [McqSessionMode.REVISION], or [McqSessionMode.RATED_PRIORITY], this locks the answer,
      * updates score, records stats, and triggers feedback.
      * In [McqSessionMode.TEST], this records/updates selection temporarily.
      */
@@ -130,7 +135,7 @@ class McqSessionManager(
         val currentIndex = state.currentQuestionIndex
         val currentMcq = state.currentQuestion ?: return state
 
-        if (mode == McqSessionMode.PRACTICE || mode == McqSessionMode.REVISION) {
+        if (mode == McqSessionMode.PRACTICE || mode == McqSessionMode.REVISION || mode == McqSessionMode.RATED_PRIORITY) {
             // Instant feedback mode: Ignore if already answered
             if (state.isQuestionAnswered(currentIndex)) {
                 return state

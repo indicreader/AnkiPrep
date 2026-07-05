@@ -5,6 +5,8 @@ import android.net.Uri
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.UUID
 
 /**
@@ -66,6 +68,48 @@ object ImageStorageManager {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to delete local image file $relativePath: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Downloads an image from a remote [url] and saves it to the app's internal storage.
+     *
+     * @return The relative path of the stored file or null if failed.
+     */
+    fun downloadImageFromUrl(context: Context, url: String): String? {
+        return try {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 15_000
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+            connection.connect()
+
+            val contentType = connection.contentType ?: "image/jpeg"
+            val extension = when {
+                contentType.contains("png") -> "png"
+                contentType.contains("gif") -> "gif"
+                contentType.contains("webp") -> "webp"
+                else -> "jpg"
+            }
+
+            val dir = File(context.filesDir, IMAGES_DIR)
+            if (!dir.exists()) dir.mkdirs()
+
+            val filename = "img_${UUID.randomUUID()}.$extension"
+            val targetFile = File(dir, filename)
+
+            connection.inputStream.use { input ->
+                FileOutputStream(targetFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            connection.disconnect()
+
+            Log.d(TAG, "Downloaded image from URL to: ${targetFile.absolutePath}")
+            "$IMAGES_DIR/$filename"
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to download image from URL: ${e.message}", e)
+            null
         }
     }
 

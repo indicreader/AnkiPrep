@@ -37,7 +37,9 @@ import com.example.flashcardapp.fsrs.FsrsScheduler
  * - Mock data is used transparently when AnkiDroid is unavailable
  */
 import com.example.flashcardapp.data.dao.AliasDao
+import com.example.flashcardapp.data.dao.CardUserMetadataDao
 import com.example.flashcardapp.data.entities.AliasEntity
+import com.example.flashcardapp.data.entities.CardUserMetadataEntity
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
@@ -49,7 +51,8 @@ class AnkiDataRepository(
     private val cardOverrideDao: CardOverrideDao,
     private val cardAttemptDao: CardAttemptDao,
     val cardStateDao: CardStateDao,
-    val aliasDao: AliasDao
+    val aliasDao: AliasDao,
+    val cardUserMetadataDao: CardUserMetadataDao
 ) {
     private val gson = Gson()
     val fsrsScheduler = FsrsScheduler(cardStateDao)
@@ -72,7 +75,8 @@ class AnkiDataRepository(
                         cardOverrideDao = db.cardOverrideDao(),
                         cardAttemptDao = db.cardAttemptDao(),
                         cardStateDao = db.cardStateDao(),
-                        aliasDao = db.aliasDao()
+                        aliasDao = db.aliasDao(),
+                        cardUserMetadataDao = db.cardUserMetadataDao()
                     ).also { INSTANCE = it }
                 }
             }
@@ -384,6 +388,11 @@ class AnkiDataRepository(
         cardDao.getCardCount()
     }
 
+    /** Card count for a specific deck. */
+    suspend fun getCardCountForDeck(deckId: Long): Int = withContext(Dispatchers.IO) {
+        cardDao.getCardCountForDeck(deckId)
+    }
+
     /** Parse tags JSON string back to List<String>. */
     fun parseTags(tagsJson: String): List<String> {
         return try {
@@ -498,6 +507,11 @@ class AnkiDataRepository(
 
     /** Reactive stream of all completed session records. */
     fun observeSessionRecords(): Flow<List<SessionRecordEntity>> = sessionRecordDao.getAllRecordsFlow()
+
+    /** Reactive stream of card attempts since a specific timestamp. */
+    fun observeAttemptsSince(sinceTimestamp: Long): Flow<List<CardAttemptEntity>> {
+        return cardAttemptDao.observeAttemptsSince(sinceTimestamp)
+    }
 
     /** One-shot fetch of all session records. */
     suspend fun getSessionRecords(): List<SessionRecordEntity> = withContext(Dispatchers.IO) {
@@ -890,6 +904,38 @@ class AnkiDataRepository(
             deckDao.deleteDeck(sourceDeckId)
             Log.d(TAG, "Source deck $sourceDeckId successfully deleted and merged into target $targetDeckId")
         }
+    }
+
+    // ========================================================================
+    // Card User Metadata (Ratings & Stars) Operations
+    // ========================================================================
+
+    suspend fun getCardUserMetadata(cardId: Long): CardUserMetadataEntity {
+        return withContext(Dispatchers.IO) {
+            cardUserMetadataDao.getMetadataForCard(cardId) ?: CardUserMetadataEntity(cardId)
+        }
+    }
+
+    suspend fun setCardRating(cardId: Long, rating: Int) = withContext(Dispatchers.IO) {
+        val existing = cardUserMetadataDao.getMetadataForCard(cardId)
+        val updated = existing?.copy(rating = rating) ?: CardUserMetadataEntity(cardId = cardId, rating = rating)
+        cardUserMetadataDao.upsertMetadata(updated)
+        Log.d(TAG, "Updated rating for card $cardId to $rating")
+    }
+
+    suspend fun setCardStarred(cardId: Long, isStarred: Boolean) = withContext(Dispatchers.IO) {
+        val existing = cardUserMetadataDao.getMetadataForCard(cardId)
+        val updated = existing?.copy(isStarred = isStarred) ?: CardUserMetadataEntity(cardId = cardId, isStarred = isStarred)
+        cardUserMetadataDao.upsertMetadata(updated)
+        Log.d(TAG, "Updated starred status for card $cardId to $isStarred")
+    }
+
+    fun observeAllUserMetadata(): Flow<List<CardUserMetadataEntity>> {
+        return cardUserMetadataDao.getAllMetadataFlow()
+    }
+
+    suspend fun getAllUserMetadataOnce(): List<CardUserMetadataEntity> = withContext(Dispatchers.IO) {
+        cardUserMetadataDao.getAllMetadataOnce()
     }
 }
 

@@ -39,6 +39,7 @@ fun DeckSelectionScreen(
     currentMode: McqSessionMode,
     cardCount: Int,
     sessionRecords: List<SessionRecordEntity>,
+    attemptsToday: List<com.example.flashcardapp.data.entities.CardAttemptEntity> = emptyList(),
     onRequestPermission: () -> Unit,
     onRefresh: () -> Unit,
     onSettingsClicked: () -> Unit,
@@ -53,7 +54,10 @@ fun DeckSelectionScreen(
     onCreateDeck: (String) -> Unit = {},
     onMergeDecks: (AnkiDeck, AnkiDeck) -> Unit = { _, _ -> },
     onAddCardToDeck: (AnkiDeck, String, String, String, String?, String?, String?, String?) -> Unit = { _, _, _, _, _, _, _, _ -> },
-    onExportDeck: (AnkiDeck) -> Unit = {}
+    onExportDeck: (AnkiDeck) -> Unit = {},
+    onDeckOrderChanged: () -> Unit = {},
+    repo: com.example.flashcardapp.data.AnkiDataRepository,
+    onStartRevisionSession: (List<Long>, Boolean, McqSessionMode) -> Unit = { _, _, _ -> }
 ) {
     val currentLanguage by com.example.flashcardapp.data.TranslationManager.currentLanguage.collectAsState()
     var activeTab by remember { mutableStateOf("Dashboard") }
@@ -82,12 +86,14 @@ fun DeckSelectionScreen(
                     val tabs = listOf(
                         Triple("Dashboard", Icons.Filled.Home, Icons.Outlined.Home),
                         Triple("Review",    Icons.Filled.Quiz, Icons.Outlined.Quiz),
+                        Triple("Revise",    Icons.Filled.Star, Icons.Outlined.Star),
                         Triple("Analytics", Icons.Filled.Analytics, Icons.Outlined.Analytics),
                         Triple("Settings",  Icons.Filled.Settings, Icons.Outlined.Settings)
                     )
                     val tabLabels = listOf(
                         com.example.flashcardapp.data.TranslationManager.getString("tab_home"),
                         com.example.flashcardapp.data.TranslationManager.getString("tab_library"),
+                        com.example.flashcardapp.data.TranslationManager.getString("tab_revise"),
                         com.example.flashcardapp.data.TranslationManager.getString("tab_analytics"),
                         com.example.flashcardapp.data.TranslationManager.getString("tab_settings")
                     )
@@ -136,7 +142,7 @@ fun DeckSelectionScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = paddingValues.calculateTopPadding())
+                .padding(paddingValues)
         ) {
             when (activeTab) {
                 "Dashboard" -> DashboardTab(
@@ -146,13 +152,19 @@ fun DeckSelectionScreen(
                     onSelectDeck = onSelectDeck,
                     onManageDeckClicked = { activeTab = "Review" },
                     onSettingsClicked = { activeTab = "Settings" },
-                    onProfileClicked = onProfileClicked
+                    onProfileClicked = onProfileClicked,
+                    onAnalyticsClicked = { activeTab = "Analytics" },
+                    isDarkMode = isDarkMode,
+                    onDarkModeToggle = onDarkModeToggle
                 )
                 "Review" -> ReviewTab(
                     isAnkiInstalled = isAnkiInstalled,
                     hasPermission = hasPermission,
                     decks = decks,
+                    attemptsToday = attemptsToday,
                     currentMode = currentMode,
+                    isDarkMode = isDarkMode,
+                    onDarkModeToggle = onDarkModeToggle,
                     onRequestPermission = onRequestPermission,
                     onRefresh = onRefresh,
                     onImportApkgClicked = onImportApkgClicked,
@@ -165,7 +177,14 @@ fun DeckSelectionScreen(
                     onCreateDeck = onCreateDeck,
                     onAddCardToDeck = onAddCardToDeck,
                     onExportDeck = onExportDeck,
-                    onMenuClicked = {}
+                    onMenuClicked = {},
+                    onDeckOrderChanged = onDeckOrderChanged
+                )
+                "Revise" -> ReviseTab(
+                    repo = repo,
+                    onStartSession = onStartRevisionSession,
+                    isDarkMode = isDarkMode,
+                    onDarkModeToggle = { onDarkModeToggle(!isDarkMode) }
                 )
                 "Analytics" -> AnalyticsTab(
                     cardCount = cardCount,

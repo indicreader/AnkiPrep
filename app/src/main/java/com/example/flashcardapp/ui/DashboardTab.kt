@@ -52,16 +52,22 @@ fun DashboardTab(
     onSelectDeck: (AnkiDeck) -> Unit,
     onManageDeckClicked: () -> Unit,
     onSettingsClicked: () -> Unit,
-    onProfileClicked: () -> Unit
+    onProfileClicked: () -> Unit,
+    onAnalyticsClicked: () -> Unit = {},
+    isDarkMode: Boolean = false,
+    onDarkModeToggle: (Boolean) -> Unit = {}
 ) {
     val currentLanguage by com.example.flashcardapp.data.TranslationManager.currentLanguage.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val sharedPrefs = remember { context.getSharedPreferences("AnkiPrepProfile", android.content.Context.MODE_PRIVATE) }
     var avatarUriStr by remember { mutableStateOf(sharedPrefs.getString("avatar_uri", null)) }
+    var profileName by remember { mutableStateOf(sharedPrefs.getString("profile_name", "User") ?: "User") }
     DisposableEffect(sharedPrefs) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
             if (key == "avatar_uri") {
                 avatarUriStr = prefs.getString("avatar_uri", null)
+            } else if (key == "profile_name") {
+                profileName = prefs.getString("profile_name", "User") ?: "User"
             }
         }
         sharedPrefs.registerOnSharedPreferenceChangeListener(listener)
@@ -69,7 +75,15 @@ fun DashboardTab(
             sharedPrefs.unregisterOnSharedPreferenceChangeListener(listener)
         }
     }
-    val avatarUri = remember(avatarUriStr) { avatarUriStr?.let { android.net.Uri.parse(it) } }
+    val avatarUri = remember(avatarUriStr) {
+        avatarUriStr?.let { path ->
+            if (path.startsWith("/")) {
+                java.io.File(path)
+            } else {
+                android.net.Uri.parse(path)
+            }
+        }
+    }
 
     val settingsRepo = remember { com.example.flashcardapp.data.SettingsRepository.getInstance(context) }
     val customOrder = remember { settingsRepo.getDeckOrderList() }
@@ -131,7 +145,8 @@ fun DashboardTab(
                 .background(MaterialTheme.colorScheme.background)
                 .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp)
-                .padding(bottom = 70.dp),
+                .padding(bottom = 16.dp),
+
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             Spacer(Modifier.height(16.dp))
@@ -162,12 +177,6 @@ fun DashboardTab(
                             Icon(Icons.Filled.Person, contentDescription = "Profile", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                         }
                     }
-                    Text(
-                        text = "AnkiPrep",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     // Streak chip
@@ -187,6 +196,14 @@ fun DashboardTab(
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
+                     IconButton(onClick = { onDarkModeToggle(!isDarkMode) }, modifier = Modifier.size(36.dp)) {
+                        Icon(
+                            imageVector = if (isDarkMode) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                            contentDescription = if (isDarkMode) "Light Mode" else "Dark Mode",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     IconButton(onClick = onSettingsClicked, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Outlined.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                     }
@@ -197,7 +214,7 @@ fun DashboardTab(
 
             // ── Greeting ─────────────────────────────────────────────────────────
             Text(
-                text = com.example.flashcardapp.data.TranslationManager.getString("welcome_back"),
+                text = "Hello, $profileName!",
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
@@ -268,7 +285,7 @@ fun DashboardTab(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(com.example.flashcardapp.data.TranslationManager.getString("weekly_progress"), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                TextButton(onClick = { /* navigate to analytics */ }) {
+                TextButton(onClick = onAnalyticsClicked) {
                     Text(com.example.flashcardapp.data.TranslationManager.getString("stats") + " >", fontSize = 13.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 }
             }
@@ -334,26 +351,10 @@ fun DashboardTab(
                 }
             }
 
-            Spacer(Modifier.height(100.dp))
+            Spacer(Modifier.height(12.dp))
         }
 
-        // Anchored Bottom Adaptive AdMob Banner with content divider
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-        ) {
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-                thickness = 1.dp
-            )
-            AdBanner(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp)
-            )
-        }
+
     }
 }
 

@@ -8,6 +8,9 @@ import com.example.flashcardapp.data.dao.CardDao
 import com.example.flashcardapp.data.dao.DeckDao
 import com.example.flashcardapp.data.entities.CardEntity
 import com.example.flashcardapp.data.entities.DeckEntity
+import com.example.flashcardapp.data.entities.DeckProgressLedger
+import com.example.flashcardapp.data.PersistentProgressManager
+import com.example.flashcardapp.session.SessionGenerationEngine
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
@@ -149,5 +152,32 @@ class CachePersistenceTest {
         // Count should be 0
         val count = cardDao.getCardCountForDeck(99L)
         assertEquals(0, count)
+    }
+
+    @Test
+    fun canWriteAndReadDeckProgressLedger() = runBlocking {
+        // First insert a dummy card since DeckProgressLedger has a foreign key to cards
+        val deck = DeckEntity(id = 10L, name = "Ledger Test", fullPath = "Ledger Test")
+        deckDao.upsertDeck(deck)
+        val card = CardEntity(
+            id = 1L, noteId = 100L, deckId = 10L,
+            front = "Q", back = "A",
+            tags = "[]", deckHierarchy = "Ledger Test"
+        )
+        cardDao.upsertCards(listOf(card))
+
+        val ledgerDao = db.deckProgressLedgerDao()
+        val entry = DeckProgressLedger(cardId = 1L, deckId = 10L)
+        ledgerDao.insert(entry)
+
+        val attempted = ledgerDao.getAttemptedCardIdsForDeck(10L)
+        assertEquals(1, attempted.size)
+        assertEquals(1L, attempted.first())
+
+        val count = ledgerDao.getAttemptedCountForDeck(10L)
+        assertEquals(1, count)
+
+        ledgerDao.clearProgressForDeck(10L)
+        assertEquals(0, ledgerDao.getAttemptedCountForDeck(10L))
     }
 }

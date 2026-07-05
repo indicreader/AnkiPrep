@@ -3,6 +3,9 @@ package com.example.flashcardapp.data
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 
 enum class AppLanguage(val code: String, val displayName: String) {
     EN("en", "English"),
@@ -14,7 +17,7 @@ enum class AppLanguage(val code: String, val displayName: String) {
     AS("as","অসমীয়া (Assamese)"),
     BN("bn","বাংলা (Bengali)"),
     GU("gu","ગુજરાતી (Gujarati)"),
-    OR("or","ଓଡ଼ିଆ (Odia)"),
+    OR("or","ଓଡ଼ಿଆ (Odia)"),
     PA("pa","ਪੰਜਾਬੀ (Punjabi)"),
     UR("ur","اردو (Urdu)"),
     MI("mi","भोजपुरी (Bhojpuri)"),
@@ -24,13 +27,18 @@ object TranslationManager {
     private val _currentLanguage = MutableStateFlow(AppLanguage.EN)
     val currentLanguage: StateFlow<AppLanguage> = _currentLanguage.asStateFlow()
 
+    var currentLanguageState by mutableStateOf(AppLanguage.EN)
+        private set
+
     fun setLanguage(language: AppLanguage) {
         _currentLanguage.value = language
+        currentLanguageState = language
     }
 
     fun setLanguageByCode(code: String) {
         val lang = AppLanguage.values().find { it.code == code } ?: AppLanguage.EN
-        setLanguage(lang)
+        _currentLanguage.value = lang
+        currentLanguageState = lang
     }
 
     private val translations = mapOf(
@@ -208,6 +216,7 @@ object TranslationManager {
             "no_decks_yet_desc" to "Go to Library to import or create your first deck.",
             "tab_home" to "Home",
             "tab_library" to "Library",
+            "tab_revise" to "Revise",
             "tab_analytics" to "Analytics",
             "tab_settings" to "Settings",
             "quiz_complete" to "Quiz Complete",
@@ -1097,7 +1106,7 @@ object TranslationManager {
     )
 
     fun getString(key: String): String {
-        val lang = _currentLanguage.value
+        val lang = currentLanguageState
         return translations[lang]?.get(key) ?: translations[AppLanguage.EN]?.get(key) ?: key
     }
 

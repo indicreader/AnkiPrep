@@ -33,8 +33,46 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import android.os.PowerManager
+import android.media.projection.MediaProjectionManager
+
+import android.os.Build
+
+fun sha256(input: String): String {
+    val md = java.security.MessageDigest.getInstance("SHA-256")
+    val digest = md.digest(input.toByteArray())
+    return digest.joinToString("") { "%02x".format(it) }
+}
+
+fun getFileName(context: Context, uri: android.net.Uri): String {
+    var result: String? = null
+    if (uri.scheme == "content") {
+        val cursor = context.contentResolver.query(uri, null, null, null, null)
+        try {
+            if (cursor != null && cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (index != -1) {
+                    result = cursor.getString(index)
+                }
+            }
+        } finally {
+            cursor?.close()
+        }
+    }
+    if (result == null) {
+        result = uri.path
+        val cut = result?.lastIndexOf('/') ?: -1
+        if (cut != -1) {
+            result = result?.substring(cut + 1)
+        }
+    }
+    return result ?: "custom_font_${System.currentTimeMillis()}.ttf"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,15 +104,31 @@ fun SettingsTab(
 
     val currentLanguage by com.example.flashcardapp.data.TranslationManager.currentLanguage.collectAsState()
     var customFontPath by remember { mutableStateOf(repository.customFontPath) }
+    var addedFonts by remember {
+        mutableStateOf(
+            java.io.File(context.filesDir, "fonts")
+                .listFiles()
+                ?.filter { it.isFile && (it.name.endsWith(".ttf", ignoreCase = true) || it.name.endsWith(".otf", ignoreCase = true)) }
+                ?: emptyList()
+        )
+    }
     var dailyMasteryGoal by remember { mutableStateOf(repository.questionLimit) }
     var defaultAlgorithm by remember { mutableStateOf(repository.defaultAlgorithm) }
     var hapticEnabled by remember { mutableStateOf(repository.vibrationEnabled) }
     var showExplanations by remember { mutableStateOf(repository.showExplanations) }
+    var whiteboardAutoStylusMode by remember { mutableStateOf(repository.whiteboardAutoStylusMode) }
+    var whiteboardHighlighterAlpha by remember { mutableStateOf(repository.whiteboardHighlighterAlpha) }
+    var whiteboardDefaultPenColor by remember { mutableStateOf(repository.whiteboardDefaultPenColor) }
+    var whiteboardToolbarPosition by remember { mutableStateOf(repository.whiteboardToolbarPosition) }
+    var whiteboardOneFingerDoubleTapAction by remember { mutableStateOf(repository.whiteboardOneFingerDoubleTapAction) }
+    var whiteboardTwoFingerSingleTapAction by remember { mutableStateOf(repository.whiteboardTwoFingerSingleTapAction) }
+    var whiteboardTwoFingerDoubleTapAction by remember { mutableStateOf(repository.whiteboardTwoFingerDoubleTapAction) }
+    var whiteboardThreeFingerSingleTapAction by remember { mutableStateOf(repository.whiteboardThreeFingerSingleTapAction) }
+    var whiteboardThreeFingerDoubleTapAction by remember { mutableStateOf(repository.whiteboardThreeFingerDoubleTapAction) }
 
     var showGuideModal by remember { mutableStateOf(false) }
 
-    // Google font search state
-    var googleFontQuery by remember { mutableStateOf("") }
+
 
     // Practice mode states
     var practiceAlgorithm by remember { mutableStateOf("Spaced Repetition") }
@@ -126,10 +180,20 @@ fun SettingsTab(
         )
     }
 
+    val bgColor = if (isDarkMode) MaterialTheme.colorScheme.background else Color(0xFFF4F7F6)
+    val cardColor = if (isDarkMode) MaterialTheme.colorScheme.surfaceVariant else Color.White
+    val cardBorderColor = if (isDarkMode) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f) else Color(0xFFECEFF1)
+    val titleTextColor = if (isDarkMode) MaterialTheme.colorScheme.onBackground else Color(0xFF263238)
+    val subtextColor = if (isDarkMode) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF78909C)
+    val primaryTextColor = if (isDarkMode) MaterialTheme.colorScheme.onSurface else Color(0xFF263238)
+    val labelTextColor = if (isDarkMode) MaterialTheme.colorScheme.primary else Color(0xFF546E7A)
+    val inputBgColor = if (isDarkMode) MaterialTheme.colorScheme.surface else Color(0xFFF5F7F8)
+    val dividerColor = if (isDarkMode) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f) else Color(0xFFECEFF1)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF4F7F6)), // Light mint-grey background
+            .background(bgColor),
         contentAlignment = Alignment.TopCenter
     ) {
         Column(
@@ -138,7 +202,7 @@ fun SettingsTab(
                 .widthIn(max = 600.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Spacer(Modifier.height(16.dp))
 
@@ -153,7 +217,7 @@ fun SettingsTab(
                         modifier = Modifier
                             .size(38.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFFE0F2F1))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
                             .clickable { onNavigateToProfile() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -165,10 +229,10 @@ fun SettingsTab(
                                 contentScale = ContentScale.Crop
                             )
                         } else {
-                            Icon(Icons.Filled.Person, contentDescription = "Profile", tint = Color(0xFF004D40), modifier = Modifier.size(22.dp))
+                            Icon(Icons.Filled.Person, contentDescription = "Profile", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                         }
                     }
-                    Text("AnkiPrep", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF004D40))
+                    Text("AnkiPrep", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
                 // Streak chip
                 Row(
@@ -186,28 +250,28 @@ fun SettingsTab(
 
             // ── Title ─────────────────────────────────────────────────────────
             Column {
-                Text("Settings", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Color(0xFF263238))
+                Text("Settings", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = titleTextColor)
                 Spacer(Modifier.height(4.dp))
-                Text("Manage your professional learning environment.", fontSize = 14.sp, color = Color(0xFF78909C))
+                Text("Manage your professional learning environment.", fontSize = 14.sp, color = subtextColor)
             }
 
             // ── How to Use Guide Card ─────────────────────────────────────────
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2F1)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("How to Use Guide", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF004D40))
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("How to Use Guide", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text(
                         "Master the \"Spine\" system, daily mastery goals, and active recall triggers for optimal exam preparation.",
-                        fontSize = 13.sp, color = Color(0xFF004D40).copy(alpha = 0.8f), lineHeight = 19.sp
+                        fontSize = 13.sp, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f), lineHeight = 19.sp
                     )
                     Spacer(Modifier.height(4.dp))
                     Button(
                         onClick = { showGuideModal = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF004D40)),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         shape = RoundedCornerShape(50),
                         modifier = Modifier.height(40.dp)
                     ) {
@@ -220,28 +284,28 @@ fun SettingsTab(
 
             // ── TYPOGRAPHY & FONTS ────────────────────────────────────────────
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionLabel("TYPOGRAPHY & FONTS")
+                SectionLabel("TYPOGRAPHY & FONTS", isDarkMode)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, Color(0xFFECEFF1)),
+                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                    border = BorderStroke(1.dp, cardBorderColor),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Icon(Icons.Outlined.FontDownload, contentDescription = null, tint = Color(0xFF004D40))
+                                Icon(Icons.Outlined.FontDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                 Column {
-                                    Text("Active Font", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF263238))
+                                    Text("Active Font", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
                                     Text(
                                         text = if (!customFontPath.isNullOrEmpty()) "Custom Font (Active)" else "Inter (Default System Font)",
                                         fontSize = 12.sp,
-                                        color = Color(0xFF78909C)
+                                        color = subtextColor
                                     )
                                 }
                             }
@@ -259,31 +323,14 @@ fun SettingsTab(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(Color(0xFFE0F2F1))
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
                                         .padding(horizontal = 8.dp, vertical = 2.dp)
                                 ) {
-                                    Text("Active", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF004D40))
+                                    Text("Active", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
                         }
 
-                        // Monospace preview box
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFFF5F7F8))
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                "The quick brown fox jumps over the lazy dog.",
-                                fontSize = 14.sp,
-                                fontStyle = FontStyle.Italic,
-                                color = Color(0xFF455A64),
-                                textAlign = TextAlign.Center
-                            )
-                        }
 
                         val coroutineScope = rememberCoroutineScope()
                         val fontFilePickerLauncher = rememberLauncherForActivityResult(
@@ -292,16 +339,24 @@ fun SettingsTab(
                             if (uri != null) {
                                 coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                                     try {
-                                        val file = java.io.File(context.filesDir, "custom_font.ttf")
+                                        val fontsDir = java.io.File(context.filesDir, "fonts")
+                                        if (!fontsDir.exists()) fontsDir.mkdirs()
+                                        val originalName = getFileName(context, uri)
+                                        val destinationFile = java.io.File(fontsDir, originalName)
                                         context.contentResolver.openInputStream(uri)?.use { input ->
-                                            file.outputStream().use { output ->
+                                            destinationFile.outputStream().use { output ->
                                                 input.copyTo(output)
                                             }
                                         }
-                                        repository.customFontPath = file.absolutePath
-                                        customFontPath = file.absolutePath
                                         withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                            onFontFamilyTypeChange("CUSTOM_" + System.currentTimeMillis())
+                                            addedFonts = fontsDir.listFiles()
+                                                ?.filter { it.isFile && (it.name.endsWith(".ttf", ignoreCase = true) || it.name.endsWith(".otf", ignoreCase = true)) }
+                                                ?: emptyList()
+                                            
+                                            // Apply newly added font
+                                            repository.customFontPath = destinationFile.absolutePath
+                                            customFontPath = destinationFile.absolutePath
+                                            onFontFamilyTypeChange("CUSTOM_" + destinationFile.name + "_" + System.currentTimeMillis())
                                             android.widget.Toast.makeText(context, "Font loaded successfully", android.widget.Toast.LENGTH_SHORT).show()
                                         }
                                     } catch (e: Exception) {
@@ -320,12 +375,12 @@ fun SettingsTab(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Icon(Icons.Outlined.FolderOpen, contentDescription = null, tint = Color(0xFF004D40), modifier = Modifier.size(18.dp))
-                                Text("Load Local Font File (.ttf/.otf)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF004D40))
+                                Icon(Icons.Outlined.FolderOpen, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                Text("Load Local Font File (.ttf/.otf)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
                             }
                             Button(
                                 onClick = { fontFilePickerLauncher.launch("*/*") },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF004D40)),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                 contentPadding = PaddingValues(horizontal = 12.dp),
                                 modifier = Modifier.height(28.dp),
                                 shape = RoundedCornerShape(6.dp)
@@ -334,81 +389,64 @@ fun SettingsTab(
                             }
                         }
 
-                        HorizontalDivider(color = Color(0xFFECEFF1))
-
-                        // Download Label
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(Icons.Outlined.AddCircleOutline, contentDescription = null, tint = Color(0xFF004D40), modifier = Modifier.size(18.dp))
-                            Text("Download & Load Custom Font (.ttf)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF004D40))
-                        }
-
-                        // Download Input Row
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFFF5F7F8))
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Icon(Icons.Filled.Search, contentDescription = null, tint = Color(0xFF90A4AE))
-                            BasicTextField(
-                                value = googleFontQuery,
-                                onValueChange = { googleFontQuery = it },
-                                modifier = Modifier.weight(1f),
-                                decorationBox = { innerTextField ->
-                                    if (googleFontQuery.isEmpty()) {
-                                        Text("Enter Font URL (e.g. https://domain.com/font.ttf)...", color = Color(0xFF90A4AE), fontSize = 11.sp)
-                                    }
-                                    innerTextField()
-                                }
-                            )
-                            Button(
-                                onClick = {
-                                    if (googleFontQuery.isNotEmpty()) {
-                                        coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                            try {
-                                                val url = java.net.URL(googleFontQuery)
-                                                val connection = url.openConnection() as java.net.HttpURLConnection
-                                                connection.connectTimeout = 15000
-                                                connection.readTimeout = 15000
-                                                connection.connect()
-                                                if (connection.responseCode == 200) {
-                                                    val file = java.io.File(context.filesDir, "custom_font.ttf")
-                                                    connection.inputStream.use { input ->
-                                                        file.outputStream().use { output ->
-                                                            input.copyTo(output)
-                                                        }
-                                                    }
-                                                    repository.customFontPath = file.absolutePath
-                                                    customFontPath = file.absolutePath
-                                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                        onFontFamilyTypeChange("CUSTOM_" + System.currentTimeMillis())
-                                                        android.widget.Toast.makeText(context, "Font downloaded successfully", android.widget.Toast.LENGTH_SHORT).show()
-                                                    }
-                                                } else {
-                                                    withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                        android.widget.Toast.makeText(context, "HTTP Error: ${connection.responseCode}", android.widget.Toast.LENGTH_SHORT).show()
-                                                    }
-                                                }
-                                            } catch (e: java.lang.Exception) {
-                                                withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                                    android.widget.Toast.makeText(context, "Failed to load font: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                                                }
+                        if (addedFonts.isNotEmpty()) {
+                            HorizontalDivider(color = dividerColor)
+                            Text("Added Fonts", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                addedFonts.forEach { fontFile ->
+                                    val isSelected = customFontPath == fontFile.absolutePath
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else inputBgColor)
+                                            .clickable {
+                                                repository.customFontPath = fontFile.absolutePath
+                                                customFontPath = fontFile.absolutePath
+                                                onFontFamilyTypeChange("CUSTOM_" + fontFile.name + "_" + System.currentTimeMillis())
                                             }
+                                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+                                            Icon(
+                                                imageVector = if (isSelected) Icons.Outlined.CheckCircle else Icons.Outlined.FontDownload,
+                                                contentDescription = null,
+                                                tint = if (isSelected) MaterialTheme.colorScheme.primary else subtextColor,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = fontFile.name,
+                                                fontSize = 13.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else primaryTextColor
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                fontFile.delete()
+                                                val fontsDir = java.io.File(context.filesDir, "fonts")
+                                                addedFonts = fontsDir.listFiles()
+                                                    ?.filter { it.isFile && (it.name.endsWith(".ttf", ignoreCase = true) || it.name.endsWith(".otf", ignoreCase = true)) }
+                                                    ?: emptyList()
+                                                if (isSelected) {
+                                                    repository.customFontPath = null
+                                                    customFontPath = null
+                                                    onFontFamilyTypeChange("DEFAULT")
+                                                }
+                                            },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Outlined.Delete,
+                                                contentDescription = "Delete",
+                                                tint = Color.Red.copy(alpha = 0.7f),
+                                                modifier = Modifier.size(18.dp)
+                                            )
                                         }
                                     }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF004D40)),
-                                contentPadding = PaddingValues(horizontal = 12.dp),
-                                modifier = Modifier.height(28.dp),
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
-                                Text("Download", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -417,14 +455,76 @@ fun SettingsTab(
 
             // ── QUIZ & STUDY MODES ────────────────────────────────────────────
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionLabel("QUIZ & STUDY MODES")
+                SectionLabel("QUIZ & STUDY MODES", isDarkMode)
+
+                // Global Study Mode Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                    border = BorderStroke(1.dp, cardBorderColor),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Outlined.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Column {
+                                    Text("Global Study Mode", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                    Text("Default mode for all study sessions", fontSize = 11.sp, color = subtextColor)
+                                }
+                            }
+                            
+                            var globalModeExpanded by remember { mutableStateOf(false) }
+                            var activeGlobalMode by remember { mutableStateOf(repository.studyMode) }
+                            Box {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(inputBgColor)
+                                        .clickable { globalModeExpanded = true }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    val label = when (activeGlobalMode) {
+                                        com.example.flashcardapp.session.McqSessionMode.PRACTICE -> "Practice Mode"
+                                        com.example.flashcardapp.session.McqSessionMode.TEST -> "Mock Test"
+                                        com.example.flashcardapp.session.McqSessionMode.REVISION -> "Smart Revision"
+                                        com.example.flashcardapp.session.McqSessionMode.RATED_PRIORITY -> "Priority Rated"
+                                    }
+                                    Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = primaryTextColor)
+                                }
+                                DropdownMenu(expanded = globalModeExpanded, onDismissRequest = { globalModeExpanded = false }) {
+                                    listOf(
+                                        com.example.flashcardapp.session.McqSessionMode.PRACTICE to "Practice Mode",
+                                        com.example.flashcardapp.session.McqSessionMode.TEST to "Mock Test",
+                                        com.example.flashcardapp.session.McqSessionMode.REVISION to "Smart Revision",
+                                        com.example.flashcardapp.session.McqSessionMode.RATED_PRIORITY to "Priority Rated"
+                                    ).forEach { (mode, label) ->
+                                        DropdownMenuItem(
+                                            text = { Text(label) },
+                                            onClick = {
+                                                activeGlobalMode = mode
+                                                repository.studyMode = mode
+                                                globalModeExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Practice Mode Card
                 StudyModeCard(
                     title = "PRACTICE MODE",
                     icon = Icons.Outlined.DirectionsRun,
-                    headerBg = Color(0xFFE0F2F1),
-                    textColor = Color(0xFF004D40),
+                    headerBg = if (isDarkMode) MaterialTheme.colorScheme.primaryContainer else Color(0xFFE0F2F1),
+                    textColor = if (isDarkMode) MaterialTheme.colorScheme.onPrimaryContainer else Color(0xFF004D40),
                     questionLimit = dailyMasteryGoal,
                     onQuestionLimitChange = {
                         dailyMasteryGoal = it
@@ -443,15 +543,16 @@ fun SettingsTab(
                     onAlgoExpandedChange = { practiceAlgoExpanded = it },
                     onAlgoSelected = { practiceAlgorithm = it },
                     algoOptions = listOf("Spaced Repetition", "FSRS", "Leitner"),
-                    isPracticeMode = true
+                    isPracticeMode = true,
+                    isDarkMode = isDarkMode
                 )
 
                 // Mock Test Card
                 StudyModeCard(
                     title = "MOCK TEST",
                     icon = Icons.Outlined.Alarm,
-                    headerBg = Color(0xFFECEFF1),
-                    textColor = Color(0xFF37474F),
+                    headerBg = if (isDarkMode) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFECEFF1),
+                    textColor = if (isDarkMode) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF37474F),
                     questionLimit = mockQuestionLimit,
                     onQuestionLimitChange = {
                         mockQuestionLimit = it
@@ -474,31 +575,32 @@ fun SettingsTab(
                     onAlgoExpandedChange = { mockAlgoExpanded = it },
                     onAlgoSelected = { mockAlgorithm = it },
                     algoOptions = listOf("Exam Standard", "FSRS", "Random"),
-                    isPracticeMode = false
+                    isPracticeMode = false,
+                    isDarkMode = isDarkMode
                 )
 
                 // Smart Revision Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, Color(0xFFECEFF1)),
+                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                    border = BorderStroke(1.dp, cardBorderColor),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFFECEFF1))
+                                .background(if (isDarkMode) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFECEFF1))
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = Color(0xFF455A64), modifier = Modifier.size(18.dp))
-                            Text("SMART REVISION", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF455A64))
+                            Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = if (isDarkMode) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF455A64), modifier = Modifier.size(18.dp))
+                            Text("SMART REVISION", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isDarkMode) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF455A64))
                         }
 
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             // Slider
                             Column {
                                 Row(
@@ -506,17 +608,17 @@ fun SettingsTab(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Daily Review Batch", fontSize = 14.sp, color = Color(0xFF263238))
-                                    Text("${revisionBatchSize.toInt()}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF455A64))
+                                    Text("Daily Review Batch", fontSize = 14.sp, color = primaryTextColor)
+                                    Text("${revisionBatchSize.toInt()}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
                                 }
                                 Slider(
                                     value = revisionBatchSize,
                                     onValueChange = { revisionBatchSize = it },
                                     valueRange = 5f..100f,
                                     colors = SliderDefaults.colors(
-                                        thumbColor = Color(0xFF455A64),
-                                        activeTrackColor = Color(0xFF455A64),
-                                        inactiveTrackColor = Color(0xFFCFD8DC)
+                                        thumbColor = MaterialTheme.colorScheme.primary,
+                                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                                        inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant
                                     )
                                 )
                             }
@@ -527,16 +629,16 @@ fun SettingsTab(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Algorithm", fontSize = 14.sp, color = Color(0xFF263238))
+                                Text("Algorithm", fontSize = 14.sp, color = primaryTextColor)
                                 Box {
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(Color(0xFFECEFF1))
+                                            .background(inputBgColor)
                                             .clickable { revisionAlgoExpanded = true }
                                             .padding(horizontal = 12.dp, vertical = 6.dp)
                                     ) {
-                                        Text(revisionAlgorithm, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFF455A64))
+                                        Text(revisionAlgorithm, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = primaryTextColor)
                                     }
                                     DropdownMenu(expanded = revisionAlgoExpanded, onDismissRequest = { revisionAlgoExpanded = false }) {
                                         listOf("Focus on Weak Areas", "FSRS", "Leitner").forEach { opt ->
@@ -555,22 +657,22 @@ fun SettingsTab(
 
             // ── VISUALS & EXPERIENCE ──────────────────────────────────────────
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionLabel("VISUALS & EXPERIENCE")
+                SectionLabel("VISUALS & EXPERIENCE", isDarkMode)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, Color(0xFFECEFF1)),
+                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                    border = BorderStroke(1.dp, cardBorderColor),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         // Appearance
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Icon(Icons.Outlined.Contrast, contentDescription = null, tint = Color(0xFF004D40))
+                                Icon(Icons.Outlined.Contrast, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                 Column {
-                                    Text("Appearance", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF263238))
-                                    Text("Switch between Dark and Light mode", fontSize = 11.sp, color = Color(0xFF78909C))
+                                    Text("Appearance", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                    Text("Switch between Dark and Light mode", fontSize = 11.sp, color = subtextColor)
                                 }
                             }
                             Switch(
@@ -581,29 +683,7 @@ fun SettingsTab(
                                 },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
-                                    checkedTrackColor = Color(0xFF004D40)
-                                )
-                            )
-                        }
-
-                        // Haptic Feedback
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Icon(Icons.Outlined.Vibration, contentDescription = null, tint = Color(0xFF004D40))
-                                Column {
-                                    Text("Haptic Feedback", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF263238))
-                                    Text("Vibrate on mastery achievements", fontSize = 11.sp, color = Color(0xFF78909C))
-                                }
-                            }
-                            Switch(
-                                checked = hapticEnabled,
-                                onCheckedChange = {
-                                    hapticEnabled = it
-                                    repository.vibrationEnabled = it
-                                },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = Color(0xFF004D40)
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary
                                 )
                             )
                         }
@@ -611,10 +691,10 @@ fun SettingsTab(
                         // Show Explanations
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Icon(Icons.Outlined.LibraryBooks, contentDescription = null, tint = Color(0xFF004D40))
+                                Icon(Icons.Outlined.LibraryBooks, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                 Column {
-                                    Text("Show Explanations", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF263238))
-                                    Text("Auto-reveal logic after answering", fontSize = 11.sp, color = Color(0xFF78909C))
+                                    Text("Show Explanations", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                    Text("Auto-reveal logic after answering", fontSize = 11.sp, color = subtextColor)
                                 }
                             }
                             Switch(
@@ -625,7 +705,7 @@ fun SettingsTab(
                                 },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
-                                    checkedTrackColor = Color(0xFF004D40)
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary
                                 )
                             )
                         }
@@ -633,10 +713,10 @@ fun SettingsTab(
                         // Theme Color Palette Selection
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Icon(Icons.Outlined.Palette, contentDescription = null, tint = Color(0xFF004D40))
+                                Icon(Icons.Outlined.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                 Column {
-                                    Text("Theme Color", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF263238))
-                                    Text("Personalize your workspace palette", fontSize = 11.sp, color = Color(0xFF78909C))
+                                    Text("Theme Color", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                    Text("Personalize your workspace palette", fontSize = 11.sp, color = subtextColor)
                                 }
                             }
                             Row(
@@ -652,7 +732,7 @@ fun SettingsTab(
                                             .background(p.second)
                                             .border(
                                                 width = if (isSelected) 3.dp else 0.dp,
-                                                color = if (isSelected) Color(0xFF263238) else Color.Transparent,
+                                                color = if (isSelected) primaryTextColor else Color.Transparent,
                                                 shape = CircleShape
                                             )
                                             .clickable {
@@ -666,22 +746,317 @@ fun SettingsTab(
                 }
             }
 
-            // ── STUDY GOAL & LANGUAGE ──────────────────────────────────────────
+            // ── WHITEBOARD SETTINGS ──────────────────────────────────────────
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionLabel("STUDY GOAL & LANGUAGE")
+                SectionLabel("WHITEBOARD SETTINGS", isDarkMode)
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, Color(0xFFECEFF1)),
+                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                    border = BorderStroke(1.dp, cardBorderColor),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        // Switch 1: Stylus Auto-Switch
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Outlined.Gesture, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Column {
+                                    Text("Stylus Auto-Switch", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                    Text("Stylus automatically draws, finger scrolls", fontSize = 11.sp, color = subtextColor)
+                                }
+                            }
+                            Switch(
+                                checked = whiteboardAutoStylusMode,
+                                onCheckedChange = {
+                                    whiteboardAutoStylusMode = it
+                                    repository.whiteboardAutoStylusMode = it
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                        }
+
+                        // Divider
+                        HorizontalDivider(color = dividerColor, thickness = 0.5.dp)
+
+                        // Slider 2: Highlighter Opacity (Alpha)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Icon(Icons.Outlined.Brush, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Text("Highlighter Opacity", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                }
+                                Text("${(whiteboardHighlighterAlpha * 100).toInt()}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
+                            Slider(
+                                value = whiteboardHighlighterAlpha,
+                                onValueChange = {
+                                    whiteboardHighlighterAlpha = it
+                                    repository.whiteboardHighlighterAlpha = it
+                                },
+                                valueRange = 0.15f..0.85f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = MaterialTheme.colorScheme.primary,
+                                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                                    inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant
+                                )
+                            )
+                        }
+
+                        // Divider
+                        HorizontalDivider(color = dividerColor, thickness = 0.5.dp)
+
+                        // Selector 3: Default Pen Color
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Outlined.ColorLens, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Column {
+                                    Text("Default Pen Color", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                    Text("Initial brush color on screen open", fontSize = 11.sp, color = subtextColor)
+                                }
+                            }
+                            
+                            val colorPresets = listOf(
+                                "DEFAULT" to "Adaptive Contrast",
+                                "RED" to "Bright Red",
+                                "BLUE" to "Electric Blue",
+                                "GREEN" to "Sage Green"
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                colorPresets.forEach { preset ->
+                                    val isColorSelected = whiteboardDefaultPenColor == preset.first
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isColorSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else inputBgColor)
+                                            .border(
+                                                width = if (isColorSelected) 1.5.dp else 0.5.dp,
+                                                color = if (isColorSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable {
+                                                whiteboardDefaultPenColor = preset.first
+                                                repository.whiteboardDefaultPenColor = preset.first
+                                            }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = preset.second.split(" ").last(),
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isColorSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isColorSelected) MaterialTheme.colorScheme.primary else primaryTextColor
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Divider
+                        HorizontalDivider(color = dividerColor, thickness = 0.5.dp)
+
+                        // Selector: Toolbar Position
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Outlined.OpenWith, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Column {
+                                    Text("Toolbar Position", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                    Text("Where the drawing control bar is placed", fontSize = 11.sp, color = subtextColor)
+                                }
+                            }
+                            
+                            val positionOptions = listOf(
+                                "LEFT" to "Left",
+                                "RIGHT" to "Right",
+                                "TOP" to "Top",
+                                "BOTTOM" to "Bottom",
+                                "FLOATING" to "Float"
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                positionOptions.forEach { opt ->
+                                    val isSelected = whiteboardToolbarPosition == opt.first
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else inputBgColor)
+                                            .border(
+                                                width = if (isSelected) 1.5.dp else 0.5.dp,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable {
+                                                whiteboardToolbarPosition = opt.first
+                                                repository.whiteboardToolbarPosition = opt.first
+                                            }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = opt.second,
+                                            fontSize = 10.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else primaryTextColor
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Divider
+                        HorizontalDivider(color = dividerColor, thickness = 0.5.dp)
+
+                        // Selector helper function
+                        @Composable
+                        fun GestureActionSelector(
+                            title: String,
+                            description: String,
+                            currentAction: String,
+                            icon: androidx.compose.ui.graphics.vector.ImageVector,
+                            onActionSelected: (String) -> Unit
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Column {
+                                        Text(title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                        Text(description, fontSize = 11.sp, color = subtextColor)
+                                    }
+                                }
+                                val options = listOf(
+                                    "CLEAR" to "Clear Canvas",
+                                    "UNDO" to "Undo Stroke",
+                                    "TOGGLE" to "Toggle Canvas",
+                                    "NONE" to "Disabled"
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    options.forEach { opt ->
+                                        val isSelected = currentAction == opt.first
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else inputBgColor)
+                                                .border(
+                                                    width = if (isSelected) 1.5.dp else 0.5.dp,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable { onActionSelected(opt.first) }
+                                                .padding(vertical = 8.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = opt.second.split(" ").first(),
+                                                fontSize = 10.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else primaryTextColor
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        GestureActionSelector(
+                            title = "One-Finger Double Tap Action",
+                            description = "Action when double-tapping with one finger",
+                            currentAction = whiteboardOneFingerDoubleTapAction,
+                            icon = Icons.Outlined.Gesture,
+                            onActionSelected = {
+                                whiteboardOneFingerDoubleTapAction = it
+                                repository.whiteboardOneFingerDoubleTapAction = it
+                            }
+                        )
+
+                        // Divider
+                        HorizontalDivider(color = dividerColor, thickness = 0.5.dp)
+                        GestureActionSelector(
+                            title = "Two-Finger Single Tap Action",
+                            description = "Action when single-tapping with two fingers",
+                            currentAction = whiteboardTwoFingerSingleTapAction,
+                            icon = Icons.Outlined.CleaningServices,
+                            onActionSelected = {
+                                whiteboardTwoFingerSingleTapAction = it
+                                repository.whiteboardTwoFingerSingleTapAction = it
+                            }
+                        )
+
+                        // Divider
+                        HorizontalDivider(color = dividerColor, thickness = 0.5.dp)
+                        GestureActionSelector(
+                            title = "Two-Finger Double Tap Action",
+                            description = "Action when double-tapping with two fingers",
+                            currentAction = whiteboardTwoFingerDoubleTapAction,
+                            icon = Icons.Outlined.CleaningServices,
+                            onActionSelected = {
+                                whiteboardTwoFingerDoubleTapAction = it
+                                repository.whiteboardTwoFingerDoubleTapAction = it
+                            }
+                        )
+
+                        // Divider
+                        HorizontalDivider(color = dividerColor, thickness = 0.5.dp)
+                        GestureActionSelector(
+                            title = "Three-Finger Single Tap Action",
+                            description = "Action when single-tapping with three fingers",
+                            currentAction = whiteboardThreeFingerSingleTapAction,
+                            icon = Icons.Outlined.Gesture,
+                            onActionSelected = {
+                                whiteboardThreeFingerSingleTapAction = it
+                                repository.whiteboardThreeFingerSingleTapAction = it
+                            }
+                        )
+
+                        // Divider
+                        HorizontalDivider(color = dividerColor, thickness = 0.5.dp)
+                        GestureActionSelector(
+                            title = "Three-Finger Double Tap Action",
+                            description = "Action when double-tapping with three fingers",
+                            currentAction = whiteboardThreeFingerDoubleTapAction,
+                            icon = Icons.Outlined.Gesture,
+                            onActionSelected = {
+                                whiteboardThreeFingerDoubleTapAction = it
+                                repository.whiteboardThreeFingerDoubleTapAction = it
+                            }
+                        )
+                    }
+                }
+            }
+
+            // ── STUDY GOAL & LANGUAGE ──────────────────────────────────────────
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SectionLabel("STUDY GOAL & LANGUAGE", isDarkMode)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                    border = BorderStroke(1.dp, cardBorderColor),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         // Daily Mastery Goal
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Icon(Icons.Outlined.Bolt, contentDescription = null, tint = Color(0xFF004D40))
-                                Text("Daily Mastery Goal", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF263238))
+                                Icon(Icons.Outlined.Bolt, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Text("Daily Mastery Goal", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
                             }
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 BasicTextField(
@@ -697,38 +1072,38 @@ fun SettingsTab(
                                     textStyle = androidx.compose.ui.text.TextStyle(
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF263238),
+                                        color = primaryTextColor,
                                         textAlign = TextAlign.Center
                                     ),
                                     modifier = Modifier
                                         .width(60.dp)
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0xFFF5F7F8))
+                                        .background(inputBgColor)
                                         .padding(horizontal = 8.dp, vertical = 6.dp),
                                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                                         keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
                                     )
                                 )
-                                Text("items", fontSize = 12.sp, color = Color(0xFF78909C))
+                                Text("items", fontSize = 12.sp, color = subtextColor)
                             }
                         }
 
                         // Language selector
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Icon(Icons.Outlined.Translate, contentDescription = null, tint = Color(0xFF004D40))
-                                Text("Language", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF263238))
+                                Icon(Icons.Outlined.Translate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Text("Language", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
                             }
                             var langExpanded by remember { mutableStateOf(false) }
                             Box {
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
-                                        .background(Color(0xFFF5F7F8))
+                                        .background(inputBgColor)
                                         .clickable { langExpanded = true }
                                         .padding(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
-                                    Text(currentLanguage.displayName, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFF263238))
+                                    Text(currentLanguage.displayName, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = primaryTextColor)
                                 }
                                 DropdownMenu(expanded = langExpanded, onDismissRequest = { langExpanded = false }) {
                                     AppLanguage.values().forEach { lang ->
@@ -748,27 +1123,90 @@ fun SettingsTab(
             Spacer(Modifier.height(8.dp))
 
             // ── Footer ────────────────────────────────────────────────────────
+            var tapCount by remember { mutableStateOf(0) }
+            var showPasswordDialog by remember { mutableStateOf(false) }
+            val footerInteractionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+
             Text(
-                "Made with 💖 in INDIA.",
+                text = "Made with 💖 in INDIA.",
                 fontSize = 12.sp,
-                color = Color(0xFF90A4AE),
-                modifier = Modifier.fillMaxWidth(),
+                color = subtextColor,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = footerInteractionSource,
+                        indication = null
+                    ) {
+                        tapCount++
+                        if (tapCount >= 7) {
+                            tapCount = 0
+                            showPasswordDialog = true
+                        }
+                    },
                 textAlign = TextAlign.Center
             )
 
-            Spacer(Modifier.height(100.dp))
+            if (showPasswordDialog) {
+                var passwordInput by remember { mutableStateOf("") }
+                AlertDialog(
+                    onDismissRequest = { showPasswordDialog = false },
+                    title = { Text("Unlock Premium", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Enter the password to activate premium features.")
+                            OutlinedTextField(
+                                value = passwordInput,
+                                onValueChange = { passwordInput = it },
+                                label = { Text("Password") },
+                                singleLine = true,
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    focusedLabelColor = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                val hash = sha256(passwordInput.trim())
+                                if (hash == "870dc23d21836b97b58a7753922edc8512764e83c02586f3d8f14c11f760550b" ||
+                                    hash == "de5ba444d0d9904310a3bf65fffeca15c520a1eaea937c4c13672551e632ffae") {
+                                    sharedPrefs.edit().putBoolean("is_premium", true).apply()
+                                    repository.isPremium = true
+                                    android.widget.Toast.makeText(context, "Premium Unlocked! 🎉", android.widget.Toast.LENGTH_SHORT).show()
+                                    showPasswordDialog = false
+                                } else {
+                                    android.widget.Toast.makeText(context, "Invalid password", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Text("Activate")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showPasswordDialog = false }) {
+                            Text("Cancel", color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
         }
     }
 }
 
 // ── Section Label ─────────────────────────────────────────────────────────────
 @Composable
-private fun SectionLabel(text: String) {
+private fun SectionLabel(text: String, isDarkMode: Boolean = false) {
     Text(
         text = text,
         fontSize = 11.sp,
         fontWeight = FontWeight.Bold,
-        color = Color(0xFF546E7A),
+        color = if (isDarkMode) MaterialTheme.colorScheme.primary else Color(0xFF546E7A),
         letterSpacing = 1.2.sp
     )
 }
@@ -784,7 +1222,8 @@ private fun PresetDropdownWithManualInput(
     customLabel: String,
     maxCustomValue: Int = 500,
     onValueChange: (Int) -> Unit,
-    tintColor: Color
+    tintColor: Color,
+    isDarkMode: Boolean = false
 ) {
     var expanded by remember { mutableStateOf(false) }
     val isPreset = value in presets || value == 0
@@ -798,7 +1237,7 @@ private fun PresetDropdownWithManualInput(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(label, fontSize = 14.sp, color = Color(0xFF263238))
+            Text(label, fontSize = 14.sp, color = if (isDarkMode) MaterialTheme.colorScheme.onSurface else Color(0xFF263238))
             Text(
                 text = when {
                     value == 0 -> "All / Unlimited"
@@ -821,7 +1260,7 @@ private fun PresetDropdownWithManualInput(
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = tintColor),
-                    border = BorderStroke(1.dp, Color(0xFFE8E2EC))
+                    border = BorderStroke(1.dp, if (isDarkMode) MaterialTheme.colorScheme.outlineVariant else Color(0xFFE8E2EC))
                 ) {
                     Row(
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -888,7 +1327,10 @@ private fun PresetDropdownWithManualInput(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = tintColor,
                     focusedLabelColor = tintColor,
-                    unfocusedBorderColor = Color(0xFFE8E2EC)
+                    unfocusedBorderColor = if (isDarkMode) MaterialTheme.colorScheme.outlineVariant else Color(0xFFE8E2EC),
+                    unfocusedLabelColor = if (isDarkMode) MaterialTheme.colorScheme.onSurfaceVariant else Color.Gray,
+                    focusedTextColor = if (isDarkMode) MaterialTheme.colorScheme.onSurface else Color.Black,
+                    unfocusedTextColor = if (isDarkMode) MaterialTheme.colorScheme.onSurface else Color.Black
                 ),
                 modifier = Modifier.weight(1f).height(48.dp),
                 singleLine = true,
@@ -922,13 +1364,14 @@ private fun StudyModeCard(
     onAlgoExpandedChange: (Boolean) -> Unit,
     onAlgoSelected: (String) -> Unit,
     algoOptions: List<String>,
-    isPracticeMode: Boolean
+    isPracticeMode: Boolean,
+    isDarkMode: Boolean = false
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFECEFF1)),
+        colors = CardDefaults.cardColors(containerColor = if (isDarkMode) MaterialTheme.colorScheme.surfaceVariant else Color.White),
+        border = BorderStroke(1.dp, if (isDarkMode) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f) else Color(0xFFECEFF1)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column {
@@ -944,7 +1387,7 @@ private fun StudyModeCard(
                 Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = textColor)
             }
 
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 PresetDropdownWithManualInput(
                     label = "Question Count",
                     value = questionLimit,
@@ -953,7 +1396,8 @@ private fun StudyModeCard(
                     customLabel = customLabel,
                     maxCustomValue = maxCustomValue,
                     onValueChange = onQuestionLimitChange,
-                    tintColor = textColor
+                    tintColor = textColor,
+                    isDarkMode = isDarkMode
                 )
 
                 if (!isPracticeMode) {
@@ -965,7 +1409,8 @@ private fun StudyModeCard(
                         customLabel = timeCustomLabel,
                         maxCustomValue = 600,
                         onValueChange = onTimeLimitSecondsChange,
-                        tintColor = textColor
+                        tintColor = textColor,
+                        isDarkMode = isDarkMode
                     )
                 }
 
@@ -974,16 +1419,16 @@ private fun StudyModeCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Learning Algorithm", fontSize = 14.sp, color = Color(0xFF263238))
+                    Text("Learning Algorithm", fontSize = 14.sp, color = if (isDarkMode) MaterialTheme.colorScheme.onSurface else Color(0xFF263238))
                     Box {
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFF5F7F8))
+                                .background(if (isDarkMode) MaterialTheme.colorScheme.surface else Color(0xFFF5F7F8))
                                 .clickable { onAlgoExpandedChange(true) }
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            Text(selectedAlgorithm, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = textColor)
+                            Text(selectedAlgorithm, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = if (isDarkMode) MaterialTheme.colorScheme.onSurface else textColor)
                         }
                         DropdownMenu(expanded = algoExpanded, onDismissRequest = { onAlgoExpandedChange(false) }) {
                             algoOptions.forEach { opt ->
@@ -995,7 +1440,6 @@ private fun StudyModeCard(
                         }
                     }
                 }
-                Spacer(Modifier.height(80.dp))
             }
         }
     }

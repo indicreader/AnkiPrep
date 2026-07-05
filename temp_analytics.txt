@@ -1,0 +1,118 @@
+        // Profile Section
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(Brush.linearGradient(colors = listOf(PrimaryPurple, PrimarySage), start = Offset(0f, Float.POSITIVE_INFINITY), end = Offset(Float.POSITIVE_INFINITY, 0f)))
+                    .padding(4.dp)
+            ) {
+                Box(modifier = Modifier.fillMaxSize().clip(CircleShape).background(Color(0xFF0A0A12)))
+                // Verify Icon
+                Icon(
+                    Icons.Outlined.Verified,
+                    contentDescription = null,
+                    tint = PrimaryPurple,
+                    modifier = Modifier.align(Alignment.BottomEnd).offset(x = 4.dp, y = 4.dp).background(Color(0xFF0A0A12), CircleShape)
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Scholar", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF9F9FF))
+                Text("Mastery Rank: Silver II", fontSize = 14.sp, color = Color(0xFF464555))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChipText("Science")
+                    ChipText("History")
+                    ChipText("${sessionRecords.sumOf { it.score * 10 }} XP")
+                }
+            }
+        }
+
+        // Bento Grid Analytics
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            // Consistency
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
+                border = neonBorderPrimary
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Icon(Icons.Outlined.Bolt, contentDescription = null, tint = Color(0xFFFF9800))
+                        Text("CONSISTENCY", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF464555), letterSpacing = 1.5.sp)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Text("${streakInfo.currentStreak} Days", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF9F9FF))
+                    Text("Longest: ${streakInfo.longestStreak} days", fontSize = 14.sp, color = Color(0xFF464555))
+                }
+            }
+
+            // Focus Time
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
+                border = neonBorderSecondary
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Icon(Icons.Outlined.Schedule, contentDescription = null, tint = PrimarySage)
+                        Text("FOCUS TIME", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF464555), letterSpacing = 1.5.sp)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Text("${String.format("%.1f", totalTimeHours)}h", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF9F9FF))
+                    Text("Total App Time", fontSize = 14.sp, color = Color(0xFF464555))
+                }
+            }
+
+            // Efficiency
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
+                border = neonBorderPrimary
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Icon(Icons.Outlined.School, contentDescription = null, tint = PrimaryPurple)
+                        Text("EFFICIENCY", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF464555), letterSpacing = 1.5.sp)
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Text("${mastery.toInt()}%", fontSize = 40.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF9F9FF))
+                    Text("Overall Accuracy", fontSize = 14.sp, color = Color(0xFF464555))
+                }
+            }
+        }
+
+        // Memory Retention Chart (Simplified line chart)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.03f)),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column {
+                        Text("Memory Retention", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF9F9FF))
+                        Text("Spaced repetition efficacy over time", fontSize = 12.sp, color = Color(0xFF464555))
+                    }
+                    Icon(Icons.Outlined.OpenInFull, contentDescription = null, tint = Color(0xFF464555))
+                }
+                Spacer(Modifier.height(24.dp))
+                // Draw Chart
+                Canvas(modifier = Modifier.fillMaxWidth().height(150.dp)) {
+                    val path = Path().apply {
+                        moveTo(0f, size.height * 0.8f)
+                        quadraticBezierTo(size.width * 0.125f, size.height * 0.75f, size.width * 0.25f, size.height * 0.5f)
+                        quadraticBezierTo(size.width * 0.5f, size.height * 0.45f, size.width * 0.75f, size.height * 0.2f)
+                        quadraticBezierTo(size.width * 1f, size.height * 0.1f, size.width * 1f, size.height * 0.1f)
+                    }
+                    drawPath(
+                        path = path,
+                        color = PrimaryPurple,
+                        style = Stroke(width = 6f)
+                    )

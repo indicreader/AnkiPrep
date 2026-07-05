@@ -6,6 +6,7 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import kotlin.random.Random
+import kotlinx.coroutines.runBlocking
 
 /**
  * Unit tests for the MCQ generation engine.
@@ -22,6 +23,27 @@ class McqEngineTest {
     private lateinit var engine: McqEngine
     private lateinit var sampleCards: List<CardEntity>
     private lateinit var hierarchicalCards: List<CardEntity>
+
+    private fun McqEngine.generate(
+        allCards: List<CardEntity>,
+        aliases: List<AliasEntity> = emptyList(),
+        targetDeckId: Long? = null,
+        targetDeckPath: String? = null,
+        targetDifficulty: String? = null
+    ): List<Mcq> = runBlocking {
+        this@generate.generate(
+            allCards = allCards,
+            targetCards = allCards,
+            aliases = aliases,
+            targetDeckId = targetDeckId,
+            targetDeckPath = targetDeckPath,
+            targetDifficulty = targetDifficulty
+        )
+    }
+
+    private fun HierarchyIndex.Companion.build(cards: List<CardEntity>): HierarchyIndex = runBlocking {
+        buildAsync(cards)
+    }
 
     @Before
     fun setup() {
@@ -441,6 +463,7 @@ class McqEngineTest {
             AliasEntity("ascorbic acid", "vitamin c")
         )
         val mcqs = engine.generate(cards, targetDeckId = 1, aliases = aliases)
+        println("DEBUG: mcqs = $mcqs")
         val mcq = mcqs.find { it.sourceCardId == 1L }
         assertNotNull(mcq)
         assertFalse("Should filter out synonym 'Vitamin C'", mcq!!.options.contains("Vitamin C"))

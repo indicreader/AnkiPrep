@@ -1,6 +1,9 @@
 package com.example.flashcardapp
 
 import android.content.pm.PackageManager
+import android.content.ContextWrapper
+import android.content.res.Configuration
+import java.util.Locale
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -25,6 +28,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.BorderStroke
 import com.example.flashcardapp.data.AnkiDeck
+import android.content.Context
+import com.example.flashcardapp.ui.showExamNotification
 import com.example.flashcardapp.data.AnkiDataRepository
 import com.example.flashcardapp.data.AnkiDroidBridge
 import com.example.flashcardapp.data.DataLayerDiagnostics
@@ -38,6 +43,7 @@ import com.example.flashcardapp.session.McqSessionManager
 import com.example.flashcardapp.session.McqSessionMode
 import com.example.flashcardapp.session.McqSessionState
 import com.example.flashcardapp.session.WeakCardSelector
+import com.example.flashcardapp.data.entities.CardEntity
 import com.example.flashcardapp.ui.DeckSelectionScreen
 import com.example.flashcardapp.ui.ImportDeckDialog
 import com.example.flashcardapp.ui.QuizScreen
@@ -77,7 +83,13 @@ sealed class Screen {
     object Settings : Screen()
     object Profile : Screen()
     object AliasEditor : Screen()
-    data class Quiz(val deck: AnkiDeck, val mode: McqSessionMode) : Screen()
+    data class Quiz(
+        val deck: AnkiDeck,
+        val mode: McqSessionMode,
+        val customDeckIds: List<Long>? = null,
+        val isStarredOnly: Boolean = false,
+        val sessionKey: Long = System.currentTimeMillis()
+    ) : Screen()
     data class Results(
         val deck: AnkiDeck,
         val score: Int,
@@ -101,7 +113,27 @@ sealed class Screen {
 const val ADMOB_INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-6846875306917122/8090484835"
 // =========================================================================
 
+class LocaleContextWrapper(base: Context) : ContextWrapper(base) {
+    companion object {
+        fun wrap(context: Context, savedLanguageCode: String): ContextWrapper {
+            val locale = Locale(savedLanguageCode)
+            Locale.setDefault(locale)
+            val config = Configuration(context.resources.configuration)
+            config.setLocale(locale)
+            val newContext = context.createConfigurationContext(config)
+            return LocaleContextWrapper(newContext)
+        }
+    }
+}
+
 class MainActivity : ComponentActivity() {
+
+    override fun attachBaseContext(newBase: Context) {
+        val settingsRepo = SettingsRepository.getInstance(newBase)
+        val savedLanguageCode = settingsRepo.appLanguage
+        val wrappedContext = LocaleContextWrapper.wrap(newBase, savedLanguageCode)
+        super.attachBaseContext(wrappedContext)
+    }
 
     private var mInterstitialAd: RewardedInterstitialAd? = null
     private var isAdLoading = false
@@ -152,34 +184,41 @@ class MainActivity : ComponentActivity() {
             var isDarkMode by remember { mutableStateOf(settingsRepo.isDarkMode) }
             var fontFamilyType by remember { mutableStateOf(settingsRepo.fontFamilyType) }
 
-            AnkiQuizTheme(
-                themePreset = themePreset,
-                isDarkMode = isDarkMode,
-                useDynamicWallpaper = useDynamicWallpaper,
-                fontFamilyType = fontFamilyType
-            ) {
-                MainLayout(
+            // Restore saved language on every app launch
+            remember(settingsRepo.appLanguage) {
+                TranslationManager.setLanguageByCode(settingsRepo.appLanguage)
+            }
+
+            key(TranslationManager.currentLanguageState) {
+                AnkiQuizTheme(
                     themePreset = themePreset,
-                    onThemePresetChange = {
-                        themePreset = it
-                        settingsRepo.themePreset = it
-                    },
                     isDarkMode = isDarkMode,
-                    onDarkModeToggle = {
-                        isDarkMode = it
-                        settingsRepo.isDarkMode = it
-                    },
                     useDynamicWallpaper = useDynamicWallpaper,
-                    onUseDynamicWallpaperToggle = {
-                        useDynamicWallpaper = it
-                        settingsRepo.useDynamicWallpaperTheme = it
-                    },
-                    fontFamilyType = fontFamilyType,
-                    onFontFamilyTypeChange = {
-                        fontFamilyType = it
-                        settingsRepo.fontFamilyType = it
-                    }
-                )
+                    fontFamilyType = fontFamilyType
+                ) {
+                    MainLayout(
+                        themePreset = themePreset,
+                        onThemePresetChange = {
+                            themePreset = it
+                            settingsRepo.themePreset = it
+                        },
+                        isDarkMode = isDarkMode,
+                        onDarkModeToggle = {
+                            isDarkMode = it
+                            settingsRepo.isDarkMode = it
+                        },
+                        useDynamicWallpaper = useDynamicWallpaper,
+                        onUseDynamicWallpaperToggle = {
+                            useDynamicWallpaper = it
+                            settingsRepo.useDynamicWallpaperTheme = it
+                        },
+                        fontFamilyType = fontFamilyType,
+                        onFontFamilyTypeChange = {
+                            fontFamilyType = it
+                            settingsRepo.fontFamilyType = it
+                        }
+                    )
+                }
             }
         }
     }
@@ -593,12 +632,34 @@ fun MainLayout(
     val cachedDecks by remember { AnkiDataRepository.getInstance(context).observeDecks() }
         .collectAsState(initial = emptyList())
 
-    val decksList = remember(cachedDecks) {
-        cachedDecks.map { AnkiDeck(it.id, it.fullPath) }
+    val settingsRepo = remember { SettingsRepository.getInstance(context) }
+    var isPremium by remember { mutableStateOf(settingsRepo.isPremium) }
+    DisposableEffect(settingsRepo) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "is_premium") {
+                isPremium = settingsRepo.isPremium
+            }
+        }
+        settingsRepo.registerOnSharedPreferenceChangeListener(listener)
+        onDispose {
+            settingsRepo.unregisterOnSharedPreferenceChangeListener(listener)
+        }
+    }
+    var deckOrderTrigger by remember { mutableStateOf(0) }
+
+    val decksList = remember(cachedDecks, deckOrderTrigger) {
+        val customOrder = settingsRepo.getDeckOrderList()
+        val orderMap = customOrder.withIndex().associate { it.value to it.index }
+        cachedDecks
+            .sortedWith { d1, d2 ->
+                val pos1 = orderMap[d1.id] ?: Int.MAX_VALUE
+                val pos2 = orderMap[d2.id] ?: Int.MAX_VALUE
+                if (pos1 != pos2) pos1.compareTo(pos2) else d1.name.compareTo(d2.name)
+            }
+            .map { AnkiDeck(it.id, it.fullPath, it.cardCount) }
     }
 
     // Settings State and Persistent Storage
-    val settingsRepo = remember { SettingsRepository.getInstance(context) }
     var currentMode by remember { mutableStateOf(settingsRepo.studyMode) }
     var vibrationEnabled by remember { mutableStateOf(settingsRepo.vibrationEnabled) }
     var numberOfOptions by remember { mutableStateOf(settingsRepo.numberOfOptions) }
@@ -619,6 +680,17 @@ fun MainLayout(
 
     // Observe session records from Room database reactively
     val sessionRecords by repo.observeSessionRecords().collectAsState(initial = emptyList())
+
+    // Observe attempts since today's midnight to count practiced cards per deck today
+    val todayMidnight = remember {
+        java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+    val attemptsToday by repo.observeAttemptsSince(todayMidnight).collectAsState(initial = emptyList())
 
     fun reloadDbStats() {
         coroutineScope.launch {
@@ -666,6 +738,62 @@ fun MainLayout(
             } catch (e: Exception) {
                 Log.e("MainActivity", "Background diagnostics failed: ${e.message}")
             }
+        }
+
+        // Periodic background worker for Exam Tracker web change detection
+        coroutineScope.launch(Dispatchers.IO) {
+            while (true) {
+                val profilePrefs = context.getSharedPreferences("AnkiPrepProfile", Context.MODE_PRIVATE)
+                val examsJson = profilePrefs.getString("saved_exams", null)
+                if (examsJson != null) {
+                    try {
+                        val array = org.json.JSONArray(examsJson)
+                        for (i in 0 until array.length()) {
+                            val obj = array.getJSONObject(i)
+                            val name = obj.getString("name")
+                            val url = obj.getString("url")
+                            
+                            val urlConnection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                            urlConnection.connectTimeout = 5000
+                            urlConnection.readTimeout = 5000
+                            val html = urlConnection.inputStream.bufferedReader().use { it.readText() }
+                            val newHash = html.hashCode().toString()
+                            val cachedHash = profilePrefs.getString("exam_hash_$url", null)
+                            
+                            if (cachedHash != null && cachedHash != newHash) {
+                                profilePrefs.edit()
+                                    .putString("exam_hash_$url", newHash)
+                                    .putBoolean("exam_has_delta_$url", true)
+                                    .apply()
+                                
+                                // Show native notification
+                                showExamNotification(context, name)
+                            } else if (cachedHash == null) {
+                                profilePrefs.edit()
+                                    .putString("exam_hash_$url", newHash)
+                                    .apply()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // ignore network errors
+                    }
+                }
+                // Poll every 15 minutes
+                kotlinx.coroutines.delay(15 * 60 * 1000L)
+            }
+        }
+    }
+
+    LaunchedEffect(currentScreen) {
+        if (currentScreen is Screen.Quiz || currentScreen is Screen.Settings) {
+            currentMode = settingsRepo.studyMode
+            vibrationEnabled = settingsRepo.vibrationEnabled
+            numberOfOptions = settingsRepo.numberOfOptions
+            questionLimit = settingsRepo.questionLimit
+            shuffleQuestions = settingsRepo.shuffleQuestions
+            showExplanations = settingsRepo.showExplanations
+            showTags = settingsRepo.showTags
+            timeLimitSeconds = settingsRepo.timeLimitSeconds
         }
     }
 
@@ -839,6 +967,7 @@ fun MainLayout(
                  currentMode = currentMode,
                  cardCount = cardCount,
                  sessionRecords = sessionRecords,
+                 attemptsToday = attemptsToday,
                  isDarkMode = isDarkMode,
                  onDarkModeToggle = onDarkModeToggle,
                  themePreset = themePreset,
@@ -933,6 +1062,26 @@ fun MainLayout(
                      deckToExport = deck
                      val defaultFilename = "${deck.name.replace("::", "_")}.apkg"
                      exportApkgLauncher.launch(defaultFilename)
+                 },
+                 onDeckOrderChanged = {
+                     deckOrderTrigger++
+                 },
+                 repo = repo,
+                 onStartRevisionSession = { deckIds, isStarredOnly, sessionMode ->
+                     val dummyDeck = if (isStarredOnly) {
+                         AnkiDeck(id = -200L, name = "Starred Questions")
+                     } else if (deckIds.size == 1) {
+                         val matchingDeck = decksList.find { it.id == deckIds.first() }
+                         matchingDeck ?: AnkiDeck(id = deckIds.first(), name = "Selected Deck")
+                     } else {
+                         AnkiDeck(id = -100L, name = "Selected Decks")
+                     }
+                     currentScreen = Screen.Quiz(
+                         deck = dummyDeck,
+                         mode = sessionMode,
+                         customDeckIds = deckIds.takeIf { !isStarredOnly && it.size > 1 },
+                         isStarredOnly = isStarredOnly
+                     )
                  }
              )
          }
@@ -1047,13 +1196,14 @@ fun MainLayout(
             )
         }
         is Screen.Quiz -> {
-            var mcqsState by remember(screen.deck, screen.mode, numberOfOptions, questionLimit, shuffleQuestions) {
+            var mcqsState by remember(screen.deck, screen.mode, numberOfOptions, questionLimit, shuffleQuestions, screen.sessionKey) {
                 mutableStateOf<List<Mcq>?>(null)
             }
-            var showAbandonDialog by remember { mutableStateOf(false) }
-            var adDismissed by remember(screen.deck, screen.mode) {
-                mutableStateOf(screen.mode == McqSessionMode.PRACTICE)
-            }
+             var showAbandonDialog by remember { mutableStateOf(false) }
+             var showCapacityAlert by remember(screen.deck, screen.mode, screen.sessionKey) { mutableStateOf(false) }
+             var adDismissed by remember(screen.deck, screen.mode, screen.sessionKey, isPremium) {
+                 mutableStateOf(isPremium || screen.mode == McqSessionMode.PRACTICE)
+             }
 
             BackHandler {
                 if (!adDismissed) {
@@ -1065,36 +1215,110 @@ fun MainLayout(
                 }
             }
             
-            LaunchedEffect(screen.deck, screen.mode, numberOfOptions, questionLimit, shuffleQuestions) {
+            LaunchedEffect(screen.deck, screen.mode, numberOfOptions, questionLimit, shuffleQuestions, screen.sessionKey) {
                 val questions = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                    val allCards = repo.getCardsForHierarchy(screen.deck.name)
+                    val progressManager = com.example.flashcardapp.data.PersistentProgressManager(context)
+                    val generationEngine = com.example.flashcardapp.session.SessionGenerationEngine(context)
+
+                    val remainingUnique = generationEngine.getRemainingUniqueCards(
+                        deckHierarchy = screen.deck.name,
+                        deckId = screen.deck.id,
+                        isStarredOnly = screen.isStarredOnly,
+                        customDeckIds = screen.customDeckIds
+                    )
+                    if (remainingUnique.isEmpty() && screen.mode != McqSessionMode.REVISION) {
+                        showCapacityAlert = true
+                        return@withContext emptyList<Mcq>()
+                    }
+
+                    val allCards: List<CardEntity>
+                    var targetCards: List<CardEntity>
+
+                    if (screen.isStarredOnly) {
+                        val starredIds = repo.getAllUserMetadataOnce().filter { it.isStarred }.map { it.cardId }.toSet()
+                        allCards = repo.getAllCards()
+                        targetCards = allCards.filter { starredIds.contains(it.id) }
+                    } else if (screen.customDeckIds != null) {
+                        allCards = repo.getAllCards()
+                        targetCards = allCards.filter { screen.customDeckIds.contains(it.deckId) }
+                    } else {
+                        allCards = repo.getCardsForHierarchy(screen.deck.name)
+                        targetCards = allCards
+                    }
+
+                    // Exclude any attempted cards for non-revision mode
+                    if (screen.mode != McqSessionMode.REVISION) {
+                        val attemptedIds = when {
+                            screen.isStarredOnly -> progressManager.getAllAttemptedCardIds().toSet()
+                            screen.customDeckIds != null -> screen.customDeckIds.flatMap { progressManager.getAttemptedCardIds(it) }.toSet()
+                            else -> progressManager.getAttemptedCardIds(screen.deck.id).toSet()
+                        }
+                        targetCards = targetCards.filter { !attemptedIds.contains(it.id) }
+                    }
+
                     val allAliases = repo.getAllAliases()
-                    
-                    // 1. targetCards is just allCards since we queried exactly the hierarchy
-                    var targetCards = allCards
-                    
-                    // 2. Select the final cards based on mode and settings
-                    if (screen.mode == McqSessionMode.REVISION) {
+
+                    // Select the final cards based on mode and settings
+                    if (screen.mode == McqSessionMode.RATED_PRIORITY) {
+                        val ratingMap = repo.getAllUserMetadataOnce().associate { it.cardId to it.rating }
+                        val ratedCards = targetCards.filter { (ratingMap[it.id] ?: 0) >= 1 }
+                        if (ratedCards.isNotEmpty()) {
+                            val sampled = mutableListOf<CardEntity>()
+                            val remaining = ratedCards.toMutableList()
+                            val limit = if (questionLimit > 0) minOf(questionLimit, remaining.size) else remaining.size
+                            val random = java.util.Random()
+                            for (step in 0 until limit) {
+                                val totalWeight = remaining.sumOf { ratingMap[it.id] ?: 1 }
+                                if (totalWeight <= 0) break
+                                val target = random.nextInt(totalWeight)
+                                var currentSum = 0
+                                var chosenIndex = -1
+                                for (i in remaining.indices) {
+                                    currentSum += ratingMap[remaining[i].id] ?: 1
+                                    if (currentSum > target) {
+                                        chosenIndex = i
+                                        break
+                                    }
+                                }
+                                if (chosenIndex != -1) {
+                                    val card = remaining.removeAt(chosenIndex)
+                                    sampled.add(card)
+                                } else {
+                                    break
+                                }
+                            }
+                            targetCards = sampled.sortedByDescending { ratingMap[it.id] ?: 0 }
+                        } else {
+                            targetCards = emptyList()
+                        }
+                    } else if (screen.mode == McqSessionMode.REVISION) {
                         val maxForRevision = if (questionLimit > 0) questionLimit else Int.MAX_VALUE
                         targetCards = WeakCardSelector.selectWeakCards(
                             cards = targetCards,
                             cardAttempts = repo.getAllCardAttempts(),
                             maxCards = maxForRevision
                         )
-                        // If shuffle is enabled, we shuffle the weak cards so they aren't always in the exact same FSRS order
                         if (shuffleQuestions) {
                             targetCards = targetCards.shuffled()
                         }
                     } else {
-                        if (shuffleQuestions) {
-                            targetCards = targetCards.shuffled()
-                        }
-                        if (questionLimit > 0) {
-                            targetCards = targetCards.take(questionLimit)
-                        }
+                        // Prioritize unattempted / least-attempted questions
+                        val shuffledPool = targetCards.shuffled()
+                        
+                        // Group card attempts to get attempt count per card
+                        val attemptsCountMap = repo.getAllCardAttempts().groupBy { it.cardId }.mapValues { it.value.size }
+                        
+                        // Sort pool stably by attempt count (least attempted first)
+                        val prioritizedPool = shuffledPool.sortedBy { attemptsCountMap[it.id] ?: 0 }
+                        
+                        // Take the requested count limit
+                        val selectedCards = if (questionLimit > 0) prioritizedPool.take(questionLimit) else prioritizedPool
+                        
+                        // Shuffle the selected questions again so they appear in a random order in the session
+                        targetCards = selectedCards.shuffled()
                     }
 
-                    // 3. Generate MCQs ONLY for the selected cards
+                    // Generate MCQs ONLY for the selected cards
                     val engine = McqEngine(optionsCount = numberOfOptions)
                     engine.generate(
                         allCards = allCards,
@@ -1102,15 +1326,19 @@ fun MainLayout(
                         aliases = allAliases
                     )
                 }
-                mcqsState = questions
+                if (showCapacityAlert) {
+                    mcqsState = emptyList()
+                } else {
+                    mcqsState = questions
+                }
             }
 
             // adSessionKey: unique timestamp when this quiz session was created.
             // This ensures RealAdmobInterstitialAd's LaunchedEffect re-fires every
             // new quiz — even if the same InterstitialAd object is reused.
-            val adSessionKey = remember(screen.deck, screen.mode) { System.currentTimeMillis() }
+            val adSessionKey = remember(screen.deck, screen.mode, screen.sessionKey) { System.currentTimeMillis() }
             // adIndex rotates through mock ads so the fallback never shows the same ad twice
-            val adIndex = remember(screen.deck, screen.mode) {
+            val adIndex = remember(screen.deck, screen.mode, screen.sessionKey) {
                 (System.currentTimeMillis() / 1000).toInt()
             }
 
@@ -1159,22 +1387,61 @@ fun MainLayout(
             } else {
                 val questions = mcqsState!!
                 if (questions.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(BackgroundLavender),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                    if (showCapacityAlert) {
+                        AlertDialog(
+                            onDismissRequest = {
+                                showCapacityAlert = false
+                                currentScreen = Screen.DeckSelection
+                            },
+                            title = { Text("Practice Complete") },
+                            text = { Text("You have successfully attempted all questions in this deck once! To continue practicing, please increase your maximum session question threshold or reset your deck progress.") },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    coroutineScope.launch {
+                                        val progressManager = com.example.flashcardapp.data.PersistentProgressManager(context)
+                                        progressManager.clearProgress(screen.deck.id)
+                                        showCapacityAlert = false
+                                        currentScreen = Screen.Quiz(
+                                            deck = screen.deck,
+                                            mode = screen.mode,
+                                            customDeckIds = screen.customDeckIds,
+                                            isStarredOnly = screen.isStarredOnly,
+                                            sessionKey = System.currentTimeMillis()
+                                        )
+                                    }
+                                }) {
+                                    Text("Reset Progress")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = {
+                                    showCapacityAlert = false
+                                    currentScreen = Screen.DeckSelection
+                                }) {
+                                    Text("Cancel")
+                                }
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            containerColor = MaterialTheme.colorScheme.surface
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(BackgroundLavender),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(TranslationManager.getString("no_questions_found"), color = TextPrimaryDeep, fontWeight = FontWeight.Bold)
-                            Button(
-                                onClick = { currentScreen = Screen.DeckSelection },
-                                colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                Text(TranslationManager.getString("back"), color = Color.White)
+                                Text(TranslationManager.getString("no_questions_found"), color = TextPrimaryDeep, fontWeight = FontWeight.Bold)
+                                Button(
+                                    onClick = { currentScreen = Screen.DeckSelection },
+                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple)
+                                ) {
+                                    Text(TranslationManager.getString("back"), color = Color.White)
+                                }
                             }
                         }
                     }
@@ -1257,6 +1524,8 @@ fun MainLayout(
                         showExplanations = showExplanations,
                         showTags = showTags,
                         timeLimitSeconds = timeLimitSeconds,
+                        isDarkMode = isDarkMode,
+                        onDarkModeToggle = onDarkModeToggle,
                         onBackPressed = { showAbandonDialog = true }
                     )
 

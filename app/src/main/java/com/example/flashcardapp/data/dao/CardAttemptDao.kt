@@ -24,6 +24,9 @@ interface CardAttemptDao {
     @Query("SELECT * FROM card_attempts ORDER BY timestamp DESC")
     suspend fun getAllAttempts(): List<CardAttemptEntity>
 
+    @Query("SELECT * FROM card_attempts WHERE timestamp >= :sinceTimestamp ORDER BY timestamp DESC")
+    fun observeAttemptsSince(sinceTimestamp: Long): Flow<List<CardAttemptEntity>>
+
     @Query("DELETE FROM card_attempts WHERE cardId IN (SELECT id FROM cards WHERE deckId = :deckId)")
     suspend fun deleteAttemptsForDeck(deckId: Long)
 

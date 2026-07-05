@@ -176,4 +176,58 @@ class McqSessionTest {
         assertTrue(state.isFinished)
         assertNull(state.currentQuestion)
     }
+
+    // ========================================================================
+    // Test Case 5: Options are shuffled — correct answer index stays valid
+    // ========================================================================
+    @Test
+    fun `correct answer index is valid after option shuffle`() {
+        // Run 20 sessions; in each, the correctIndex must point to the correct text.
+        val original = dummyMcqs[0] // correct option text is "Paris" at original index 2
+        repeat(20) {
+            val manager = McqSessionManager(McqSessionMode.PRACTICE, listOf(original))
+            val q = manager.getCurrentState().currentQuestion!!
+            // The option at correctIndex must always be "Paris"
+            assertEquals(
+                "Correct option text must equal 'Paris' regardless of shuffle",
+                "Paris",
+                q.options[q.correctIndex]
+            )
+        }
+    }
+
+    // ========================================================================
+    @Test
+    fun `question order differs across independent sessions`() {
+        // Shuffle the questions before starting each session to simulate a new session start.
+        // Collect first-question ids and ensure we get variation.
+        val firstCardIds = (1..50).map {
+            val shuffled = dummyMcqs.shuffled()
+            McqSessionManager(McqSessionMode.PRACTICE, shuffled)
+                .getCurrentState()
+                .currentQuestion!!
+                .sourceCardId
+        }.toSet()
+        assertTrue(
+            "Expected question order to vary across sessions when shuffled. Got only one unique first card id.",
+            firstCardIds.size > 1
+        )
+    }
+
+    // ========================================================================
+    // Test Case 7: Correct score after shuffle — not biased by original index
+    // ========================================================================
+    @Test
+    fun `score is correct when selecting by shuffled option text`() {
+        // Use a single well-known card; find the index of "Paris" at runtime
+        // and select it — score must be 1.
+        val manager = McqSessionManager(McqSessionMode.PRACTICE, listOf(dummyMcqs[0]))
+        val q = manager.getCurrentState().currentQuestion!!
+        val parisIndex = q.options.indexOf("Paris")
+        assertTrue("Paris must exist in options", parisIndex >= 0)
+        assertEquals("Shuffled correctIndex must point to Paris", parisIndex, q.correctIndex)
+
+        val state = manager.selectOption(parisIndex, timeTakenMs = 1000L)
+        assertEquals(1, state.score)
+    }
 }

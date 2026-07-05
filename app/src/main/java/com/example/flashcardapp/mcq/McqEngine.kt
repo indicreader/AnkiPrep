@@ -60,10 +60,16 @@ class McqEngine(
         targetDeckPath: String? = null,
         targetDifficulty: String? = null
     ): List<Mcq> {
-        if (allCards.isEmpty() || targetCards.isEmpty()) return emptyList()
+        val filteredCards = targetCards.filter { card ->
+            val deckMatch = targetDeckId == null || card.deckId == targetDeckId
+            val pathMatch = targetDeckPath == null || 
+                    card.deckHierarchy == targetDeckPath || 
+                    card.deckHierarchy.startsWith("$targetDeckPath::")
+            deckMatch && pathMatch
+        }
 
         val index = HierarchyIndex.buildAsync(allCards)
-        return targetCards.mapNotNull { card ->
+        return filteredCards.mapNotNull { card ->
             generateSingleMcq(card, index, aliases, targetDifficulty)
         }
     }
@@ -213,6 +219,10 @@ class McqEngine(
 
         if (cleanCorrect == cleanCandidate) return true
 
+        // Ban if Levenshtein similarity is very high (spelling typo/alias check)
+        val similarity = calculateSimilarity(cleanCorrect, cleanCandidate)
+        if (cleanCorrect.length > 6 && cleanCandidate.length > 6 && similarity >= 0.85f) return true
+
         // Ban direct substring containment if strings are reasonably substantive
         if (cleanCorrect.length > 4 && cleanCandidate.length > 4) {
             if (cleanCorrect.contains(cleanCandidate) || cleanCandidate.contains(cleanCorrect)) return true
@@ -230,6 +240,11 @@ class McqEngine(
             }
         }
         return false
+    }
+
+    private fun extractYear(s: String): Int? {
+        val match = Regex("""\b\d{3,4}\b""").find(s)
+        return match?.value?.toIntOrNull()
     }
 
     private fun getSimilarity(s1: String, s2: String, type: String): Float {
@@ -301,8 +316,10 @@ class McqEngine(
             }
         } else {
             // Lexical
-            if (allowNota) {
+            if (allowNota || needed > 0) {
                 addIfNew("None of the above")
+                addIfNew("All of the above")
+                addIfNew("Not enough information")
             }
         }
         return result
@@ -330,11 +347,18 @@ class McqEngine(
         val rootSegment = hierarchy.firstOrNull() ?: ""
 
         val cleanCorrect = correctAnswer.lowercase().replace(Regex("[^a-z0-9 ]"), " ").trim()
-        val wordsCorrect = cleanCorrect.split("\\s+".toRegex()).filter { it.length > 2 }.toSet()
+        val wordsCorrect = cleanCorrect.split("\\s+".toRegex()).filter { it.length > 2 || it.any { it.isDigit() } }.toSet()
+        val correctAliases = aliases.filter { 
+            it.name.trim().lowercase() == cleanCorrect || 
+            it.alias.trim().lowercase() == cleanCorrect 
+        }.flatMap { 
+            listOf(it.name.trim().lowercase(), it.alias.trim().lowercase()) 
+        }.toSet()
 
         fun addCandidatesFromPool(
             cardPool: List<CardEntity>,
-            source: DistractorSource
+            source: DistractorSource,
+            ignoreType: Boolean = false
         ) {
             if (selected.size >= requiredDistractors) return
 
@@ -344,25 +368,59 @@ class McqEngine(
                 if (c.id == card.id) continue
                 val parsed = com.example.flashcardapp.data.core.StructuredParser.parseCard(c.front, c.back)
                 val cText = parsed.answer.trim()
-                if (cText.isEmpty() || cText.lowercase() in usedTexts) continue
-                if (isTautologyOrAlias(correctAnswer, cleanCorrect, wordsCorrect, cText)) continue
                 
-                // PRD Grammar / Type Check
-                if (index.getType(c.id) != answerType) continue
+                val candidates = mutableListOf<String>()
+                if (cText.isNotEmpty()) candidates.add(cText)
                 
-                // PRD Lexical Variance Bound check
-                if (!isNumeric) {
-                    val lenDiff = kotlin.math.abs(cText.length - correctAnswer.length)
-                    val limit = if (allowExtendedVariance) 10 else 5
-                    if (lenDiff > limit) continue
+                if (answerType == "person") {
+                    val nameRegex = """[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){1,3}""".toRegex()
+                    nameRegex.findAll(c.front).forEach { match ->
+                        candidates.add(match.value)
+                    }
+                    nameRegex.findAll(c.back).forEach { match ->
+                        candidates.add(match.value)
+                    }
                 }
-                eligible.add(DistractorCandidate(cText, c.id, source))
+                
+                for (text in candidates.distinct()) {
+                    val trimmedText = text.trim()
+                    if (trimmedText.isEmpty() || trimmedText.lowercase() in usedTexts) continue
+                    if (trimmedText.lowercase() in correctAliases) continue
+                    if (isTautologyOrAlias(correctAnswer, cleanCorrect, wordsCorrect, trimmedText)) continue
+                    
+                    // PRD Grammar / Type Check
+                    val isExtractedName = answerType == "person" && trimmedText != cText
+                    if (!ignoreType && !isExtractedName && index.getType(c.id) != answerType) {
+                        continue
+                    }
+
+                    // Century and year proximity filter
+                    if (answerType == "year/date") {
+                        val correctYear = extractYear(correctAnswer)
+                        val candidateYear = extractYear(trimmedText)
+                        if (correctYear != null && candidateYear != null) {
+                            val diff = kotlin.math.abs(correctYear - candidateYear)
+                            val sameCentury = (correctYear / 100) == (candidateYear / 100)
+                            if (!sameCentury && diff > 50) continue
+                        }
+                    }
+                    
+                    // PRD Lexical Variance Bound check
+                    if (!isNumeric) {
+                        val lenDiff = kotlin.math.abs(trimmedText.length - correctAnswer.length)
+                        val limit = if (allowExtendedVariance) 10 else 5
+                        val actualLimit = if (answerType == "person") 15 else limit
+                        if (lenDiff > actualLimit) continue
+                    }
+                    eligible.add(DistractorCandidate(trimmedText, c.id, source))
+                }
             }
             
             // Shuffle eligible candidates and pick top required
             eligible.shuffle(random)
             for (c in eligible) {
                 if (selected.size >= requiredDistractors) break
+                if (c.text.lowercase() in usedTexts) continue
                 selected.add(c)
                 usedTexts.add(c.text.lowercase())
             }
@@ -394,6 +452,16 @@ class McqEngine(
         // LEVEL 3: Master Deck Pool
         if (selected.size < requiredDistractors && rootSegment.isNotEmpty()) {
             addCandidatesFromPool(index.getByRootSegment(rootSegment), DistractorSource.SAME_ROOT)
+        }
+
+        // LEVEL 3.5: Global Pool Fallback
+        if (selected.size < requiredDistractors) {
+            addCandidatesFromPool(index.allCards, DistractorSource.GLOBAL_POOL, ignoreType = false)
+        }
+
+        // LEVEL 3.8: Global Pool Fallback (relaxing type check since pool is too small)
+        if (selected.size < requiredDistractors) {
+            addCandidatesFromPool(index.allCards, DistractorSource.GLOBAL_POOL, ignoreType = true)
         }
         
         // LEVEL 4: None of the above Fallback / Synthetic Variance Generation

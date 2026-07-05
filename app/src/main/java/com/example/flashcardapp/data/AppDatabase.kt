@@ -12,6 +12,7 @@ import com.example.flashcardapp.data.dao.CardOverrideDao
 import com.example.flashcardapp.data.dao.CardAttemptDao
 import com.example.flashcardapp.data.dao.CardStateDao
 import com.example.flashcardapp.data.dao.AliasDao
+import com.example.flashcardapp.data.dao.CardUserMetadataDao
 import com.example.flashcardapp.data.entities.CardStateEntity
 import com.example.flashcardapp.data.entities.CardOverrideEntity
 import com.example.flashcardapp.data.entities.CardEntity
@@ -19,6 +20,9 @@ import com.example.flashcardapp.data.entities.DeckEntity
 import com.example.flashcardapp.data.entities.SessionRecordEntity
 import com.example.flashcardapp.data.entities.CardAttemptEntity
 import com.example.flashcardapp.data.entities.AliasEntity
+import com.example.flashcardapp.data.entities.CardUserMetadataEntity
+import com.example.flashcardapp.data.entities.DeckProgressLedger
+import com.example.flashcardapp.data.dao.DeckProgressLedgerDao
 
 /**
  * Room database for caching AnkiDroid flashcard data locally.
@@ -37,9 +41,11 @@ import com.example.flashcardapp.data.entities.AliasEntity
         CardOverrideEntity::class,
         CardAttemptEntity::class,
         CardStateEntity::class,
-        AliasEntity::class
+        AliasEntity::class,
+        CardUserMetadataEntity::class,
+        DeckProgressLedger::class
     ],
-    version = 9,
+    version = 12,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -52,6 +58,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun cardAttemptDao(): CardAttemptDao
     abstract fun cardStateDao(): CardStateDao
     abstract fun aliasDao(): AliasDao
+    abstract fun cardUserMetadataDao(): CardUserMetadataDao
+    abstract fun deckProgressLedgerDao(): DeckProgressLedgerDao
 
     companion object {
         private const val DATABASE_NAME = "ankiprep_cache.db"
@@ -122,6 +130,42 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `card_user_metadata` (
+                        `cardId` INTEGER NOT NULL, 
+                        `isStarred` INTEGER NOT NULL DEFAULT 0, 
+                        `rating` INTEGER NOT NULL DEFAULT 0, 
+                        PRIMARY KEY(`cardId`), 
+                        FOREIGN KEY(`cardId`) REFERENCES `cards`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE 
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_card_user_metadata_cardId` ON `card_user_metadata` (`cardId`)")
+            }
+        }
+
+        val MIGRATION_10_11 = object : androidx.room.migration.Migration(10, 11) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `DeckProgressLedger` (
+                        `cardId` INTEGER NOT NULL, 
+                        `deckId` INTEGER NOT NULL, 
+                        PRIMARY KEY(`cardId`), 
+                        FOREIGN KEY(`cardId`) REFERENCES `cards`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE 
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_DeckProgressLedger_cardId` ON `DeckProgressLedger` (`cardId`)")
+            }
+        }
+
+        val MIGRATION_11_12 = object : androidx.room.migration.Migration(11, 12) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // Ensure the index exists for card_user_metadata — may have been missed on some devices
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_card_user_metadata_cardId` ON `card_user_metadata` (`cardId`)")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -129,7 +173,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }
             }

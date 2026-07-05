@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -77,14 +78,35 @@ fun AnalyticsTab(
             sharedPrefs.unregisterOnSharedPreferenceChangeListener(listener)
         }
     }
-    val avatarUri = remember(avatarUriStr) { avatarUriStr?.let { Uri.parse(it) } }
+    val avatarUri = remember(avatarUriStr) {
+        avatarUriStr?.let { path ->
+            if (path.startsWith("/")) {
+                java.io.File(path)
+            } else {
+                Uri.parse(path)
+            }
+        }
+    }
 
+    val coroutineScope = rememberCoroutineScope()
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
         onResult = { uri ->
             if (uri != null) {
-                avatarUriStr = uri.toString()
-                sharedPrefs.edit().putString("avatar_uri", uri.toString()).apply()
+                coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val file = java.io.File(context.filesDir, "avatar_image.jpg")
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            file.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        avatarUriStr = file.absolutePath
+                        sharedPrefs.edit().putString("avatar_uri", file.absolutePath).apply()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
             }
         }
     )
@@ -111,30 +133,43 @@ fun AnalyticsTab(
     }
 
     val retentionData = remember(sessionRecords) {
-        val result = FloatArray(5) { 0f }
-        val cal = Calendar.getInstance()
         val todayMs = System.currentTimeMillis()
-        val weekData = mutableMapOf<Int, Pair<Int, Int>>()
+        val oneDayMs = 86_400_000L
+        val totals = IntArray(5) { 0 }
+        val corrects = IntArray(5) { 0 }
+
         sessionRecords.forEach { r ->
-            val diff = ((todayMs - r.timestamp) / 86_400_000L).toInt()
-            if (diff in 0..4) {
-                val existing = weekData.getOrDefault(diff, 0 to 0)
-                weekData[diff] = (existing.first + r.score) to (existing.second + r.totalQuestions)
+            val diffDays = ((todayMs - r.timestamp) / oneDayMs).toInt()
+            val rangeIndex = when {
+                diffDays == 0 -> 4 // Today
+                diffDays in 1..7 -> 3 // Week 4 (last 7 days)
+                diffDays in 8..14 -> 2 // Week 3
+                diffDays in 15..21 -> 1 // Week 2
+                diffDays in 22..28 -> 0 // Week 1
+                else -> -1
+            }
+            if (rangeIndex != -1) {
+                totals[rangeIndex] += r.totalQuestions
+                corrects[rangeIndex] += r.score
             }
         }
-        var hasAnyData = false
+
+        val result = MutableList(5) { 75f }
         for (i in 0..4) {
-            val (c, t) = weekData.getOrDefault(i, 0 to 0)
-            if (t > 0) {
-                result[4 - i] = (c.toFloat() / t * 100f)
-                hasAnyData = true
+            if (totals[i] > 0) {
+                result[i] = (corrects[i].toFloat() / totals[i] * 100f)
+            } else {
+                result[i] = when (i) {
+                    0 -> 70f
+                    1 -> 72f
+                    2 -> 75f
+                    3 -> 78f
+                    4 -> 80f
+                    else -> 75f
+                }
             }
         }
-        if (!hasAnyData) {
-            listOf(60f, 65f, 70f, 75f, 80f)
-        } else {
-            result.toList()
-        }
+        result.toList()
     }
 
     val subjectStrengths = remember(sessionRecords) {
@@ -229,7 +264,6 @@ fun AnalyticsTab(
                             Icon(Icons.Filled.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                         }
                     }
-                    Text("AnkiPrep", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
@@ -282,7 +316,36 @@ fun AnalyticsTab(
 
                 Spacer(Modifier.height(8.dp))
 
-                Text(profileName, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                    Text(profileName, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                    Spacer(Modifier.width(8.dp))
+                    var showEditDialog by remember { mutableStateOf(false) }
+                    IconButton(onClick = { showEditDialog = true }, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit Profile", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    }
+                    if (showEditDialog) {
+                        EditProfileDialog(
+                            currentName = profileName,
+                            currentGoal = profileGoal,
+                            currentRank = profileRank,
+                            currentBio = profileBio,
+                            onConfirm = { name, goal, rank, bio ->
+                                profileName = name
+                                profileGoal = goal
+                                profileRank = rank
+                                profileBio = bio
+                                sharedPrefs.edit()
+                                    .putString("profile_name", name)
+                                    .putString("profile_goal", goal)
+                                    .putString("profile_rank", rank)
+                                    .putString("profile_bio", bio)
+                                    .apply()
+                                showEditDialog = false
+                            },
+                            onDismiss = { showEditDialog = false }
+                        )
+                    }
+                }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ProfileBadge(text = rankLabel, primary = true)
@@ -371,25 +434,7 @@ fun AnalyticsTab(
                 }
             }
 
-            // ── Subject Strengths radar chart ─────────────────────────────────
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            ) {
-                Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Column {
-                            Text("Subject Strengths", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                            Text("Expertise distribution", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    SubjectRadarChart(data = subjectStrengths, color = MaterialTheme.colorScheme.primary)
-                }
-            }
+
 
             // ── Recent Accomplishments ────────────────────────────────────────
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -542,74 +587,78 @@ private fun RetentionLineChart(data: List<Float>, color: Color) {
 }
 
 @Composable
-private fun SubjectRadarChart(data: List<Pair<String, Float>>, color: Color) {
-    val subjects = data.map { it.first }
-    val values = data.map { it.second.coerceIn(0.1f, 1.0f) }
+fun EditProfileDialog(
+    currentName: String,
+    currentGoal: String,
+    currentRank: String,
+    currentBio: String,
+    onConfirm: (String, String, String, String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var name by remember { mutableStateOf(currentName) }
+    var goal by remember { mutableStateOf(currentGoal) }
+    var rank by remember { mutableStateOf(currentRank) }
+    var bio by remember { mutableStateOf(currentBio) }
 
-    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Canvas(modifier = Modifier.size(200.dp)) {
-            val center = Offset(size.width / 2, size.height / 2)
-            val maxRadius = size.width * 0.38f
-            val n = subjects.size
-            val angleStep = (2 * PI / n).toFloat()
-
-            for (ring in 1..4) {
-                val r = maxRadius * ring / 4f
-                val ringPath = Path()
-                for (i in 0 until n) {
-                    val angle = i * angleStep - PI.toFloat() / 2
-                    val x = center.x + r * cos(angle)
-                    val y = center.y + r * sin(angle)
-                    if (i == 0) ringPath.moveTo(x, y) else ringPath.lineTo(x, y)
-                }
-                ringPath.close()
-                drawPath(ringPath, color = Color.LightGray.copy(alpha = 0.15f), style = Stroke(width = 1.5f))
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Profile", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+                OutlinedTextField(
+                    value = goal,
+                    onValueChange = { goal = it },
+                    label = { Text("Goal / Exam") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+                OutlinedTextField(
+                    value = rank,
+                    onValueChange = { rank = it },
+                    label = { Text("Rank Title") },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+                OutlinedTextField(
+                    value = bio,
+                    onValueChange = { bio = it },
+                    label = { Text("Bio") },
+                    maxLines = 3,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary
+                    )
+                )
             }
-
-            for (i in 0 until n) {
-                val angle = i * angleStep - PI.toFloat() / 2
-                drawLine(Color.LightGray.copy(alpha = 0.2f), center, Offset(center.x + maxRadius * cos(angle), center.y + maxRadius * sin(angle)), strokeWidth = 1f)
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(name.trim(), goal.trim(), rank.trim(), bio.trim()) },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text("Save")
             }
-
-            val dataPath = Path()
-            values.forEachIndexed { i, v ->
-                val angle = i * angleStep - PI.toFloat() / 2
-                val r = maxRadius * v
-                val x = center.x + r * cos(angle)
-                val y = center.y + r * sin(angle)
-                if (i == 0) dataPath.moveTo(x, y) else dataPath.lineTo(x, y)
-            }
-            dataPath.close()
-            drawPath(dataPath, color = color.copy(alpha = 0.15f))
-            drawPath(dataPath, color = color, style = Stroke(width = 2.5f))
-
-            values.forEachIndexed { i, v ->
-                val angle = i * angleStep - PI.toFloat() / 2
-                val r = maxRadius * v
-                drawCircle(color, radius = 5f, center = Offset(center.x + r * cos(angle), center.y + r * sin(angle)))
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = MaterialTheme.colorScheme.primary)
             }
         }
-
-        Box(modifier = Modifier.size(240.dp)) {
-            val labelRadius = 0.52f
-            subjects.forEachIndexed { i, subject ->
-                val n = subjects.size
-                val angleStep = (2 * PI / n).toFloat()
-                val angle = i * angleStep - PI.toFloat() / 2
-                val x = (0.5f + labelRadius * cos(angle))
-                val y = (0.5f + labelRadius * sin(angle))
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .wrapContentSize(Alignment.TopStart)
-                        .offset(
-                            x = (x * 240).dp - 20.dp,
-                            y = (y * 240).dp - 8.dp
-                        )
-                ) {
-                    Text(subject, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                }
-            }
-        }
-    }
+    )
 }

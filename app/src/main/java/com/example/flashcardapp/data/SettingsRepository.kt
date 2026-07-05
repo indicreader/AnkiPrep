@@ -88,6 +88,42 @@ class SettingsRepository private constructor(context: Context) {
         get() = prefs.getBoolean("is_dark_mode", false)
         set(value) = prefs.edit().putBoolean("is_dark_mode", value).apply()
 
+    var whiteboardAutoStylusMode: Boolean
+        get() = prefs.getBoolean("whiteboard_auto_stylus_mode", true)
+        set(value) = prefs.edit().putBoolean("whiteboard_auto_stylus_mode", value).apply()
+
+    var whiteboardHighlighterAlpha: Float
+        get() = prefs.getFloat("whiteboard_highlighter_alpha", 0.45f)
+        set(value) = prefs.edit().putFloat("whiteboard_highlighter_alpha", value).apply()
+
+    var whiteboardDefaultPenColor: String
+        get() = prefs.getString("whiteboard_default_pen_color", "DEFAULT") ?: "DEFAULT"
+        set(value) = prefs.edit().putString("whiteboard_default_pen_color", value).apply()
+
+    var whiteboardToolbarPosition: String
+        get() = prefs.getString("whiteboard_toolbar_position", "RIGHT") ?: "RIGHT"
+        set(value) = prefs.edit().putString("whiteboard_toolbar_position", value).apply()
+
+    var whiteboardOneFingerDoubleTapAction: String
+        get() = prefs.getString("whiteboard_one_finger_double_tap_action", "NONE") ?: "NONE"
+        set(value) = prefs.edit().putString("whiteboard_one_finger_double_tap_action", value).apply()
+
+    var whiteboardTwoFingerSingleTapAction: String
+        get() = prefs.getString("whiteboard_two_finger_single_tap_action", "CLEAR") ?: "CLEAR"
+        set(value) = prefs.edit().putString("whiteboard_two_finger_single_tap_action", value).apply()
+
+    var whiteboardTwoFingerDoubleTapAction: String
+        get() = prefs.getString("whiteboard_two_finger_double_tap_action", "UNDO") ?: "UNDO"
+        set(value) = prefs.edit().putString("whiteboard_two_finger_double_tap_action", value).apply()
+
+    var whiteboardThreeFingerSingleTapAction: String
+        get() = prefs.getString("whiteboard_three_finger_single_tap_action", "TOGGLE") ?: "TOGGLE"
+        set(value) = prefs.edit().putString("whiteboard_three_finger_single_tap_action", value).apply()
+
+    var whiteboardThreeFingerDoubleTapAction: String
+        get() = prefs.getString("whiteboard_three_finger_double_tap_action", "NONE") ?: "NONE"
+        set(value) = prefs.edit().putString("whiteboard_three_finger_double_tap_action", value).apply()
+
     var appLanguage: String
         get() = prefs.getString("app_language", "en") ?: "en"
         set(value) {
@@ -249,6 +285,14 @@ class SettingsRepository private constructor(context: Context) {
             currentOrder[index + 1] = temp
             setDeckOrderList(currentOrder)
         }
+    }
+
+    fun registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun unregisterOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.unregisterOnSharedPreferenceChangeListener(listener)
     }
 }
 

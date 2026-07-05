@@ -13,8 +13,8 @@ android {
         minSdk = 26
         targetSdk = 34
         // Version scheme: 0.10 -> 0.20 -> 0.30 ...
-        versionCode = 89
-        versionName = "4.25"
+        versionCode = 122
+        versionName = "4.58"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -47,6 +47,8 @@ android {
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.8" }
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+
+
 
     applicationVariants.all {
         val variantName = name // "debug" / "release"
@@ -101,6 +103,9 @@ dependencies {
 
     // HTML parsing for EPUB import
     implementation("org.jsoup:jsoup:1.17.2")
+
+    // Google ML Kit Text Recognition for Tier 2 OCR Fallback
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.0")
 }
 
 // ── Fixed APK release folder ─────────────────────────────────────────────────

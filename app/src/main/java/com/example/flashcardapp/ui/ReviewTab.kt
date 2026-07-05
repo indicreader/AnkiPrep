@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +21,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.scale
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,7 +63,7 @@ data class DeckNode(
 fun buildDeckTree(decks: List<AnkiDeck>): List<DeckNode> {
     val rootNodes = mutableListOf<DeckNode>()
     val nodeMap = mutableMapOf<String, DeckNode>()
-    for (deck in decks.sortedBy { it.name }) {
+    for (deck in decks) {
         val parts = deck.name.split("::")
         var currentPath = ""
         var parentNode: DeckNode? = null
@@ -93,6 +102,32 @@ fun filterDeckTree(nodes: List<DeckNode>, query: String): List<DeckNode> {
             DeckNode(deck = node.deck, shortName = node.shortName, fullPath = node.fullPath, children = filteredChildren.toMutableList())
         else null
     }
+}
+
+fun getRecursiveCardCount(node: DeckNode): Int {
+    var count = node.deck?.cardCount ?: 0
+    for (child in node.children) {
+        count += getRecursiveCardCount(child)
+    }
+    return count
+}
+
+fun getAllDeckIds(node: DeckNode): Set<Long> {
+    val ids = mutableSetOf<Long>()
+    node.deck?.let { ids.add(it.id) }
+    for (child in node.children) {
+        ids.addAll(getAllDeckIds(child))
+    }
+    return ids
+}
+
+fun getPracticedCount(node: DeckNode, attemptsToday: List<com.example.flashcardapp.data.entities.CardAttemptEntity>): Int {
+    val deckIds = getAllDeckIds(node)
+    return attemptsToday
+        .filter { it.deckId in deckIds }
+        .map { it.cardId }
+        .distinct()
+        .size
 }
 
 // ── Deck options dropdown ─────────────────────────────────────────────────────
@@ -492,12 +527,16 @@ fun MergeCsvDialog(
 
 // ── ReviewTab ─────────────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ReviewTab(
     isAnkiInstalled: Boolean,
     hasPermission: Boolean,
     decks: List<AnkiDeck>,
+    attemptsToday: List<com.example.flashcardapp.data.entities.CardAttemptEntity> = emptyList(),
     currentMode: McqSessionMode,
+    isDarkMode: Boolean = false,
+    onDarkModeToggle: (Boolean) -> Unit = {},
     onRequestPermission: () -> Unit,
     onRefresh: () -> Unit,
     onImportApkgClicked: () -> Unit,
@@ -513,7 +552,8 @@ fun ReviewTab(
     onCreateDeck: (String) -> Unit = {},
     onAddCardToDeck: (AnkiDeck, String, String, String, String?, String?, String?, String?) -> Unit = { _, _, _, _, _, _, _, _ -> },
     onExportDeck: (AnkiDeck) -> Unit = {},
-    onMenuClicked: () -> Unit
+    onMenuClicked: () -> Unit,
+    onDeckOrderChanged: () -> Unit = {}
 ) {
     val currentLanguage by com.example.flashcardapp.data.TranslationManager.currentLanguage.collectAsState()
     var searchQuery by remember { mutableStateOf("") }
@@ -561,6 +601,10 @@ fun ReviewTab(
     LaunchedEffect(decks) {
         deckModes = decks.associate { it.id to settingsRepo.getPreferredModeForDeck(it.id) }
     }
+
+    var draggingNodeId by remember { mutableStateOf<Long?>(null) }
+    var draggingOffset by remember { mutableFloatStateOf(0f) }
+    var draggingIndex by remember { mutableIntStateOf(-1) }
 
     val visibleNodes by remember(filteredTree, searchQuery, expandedNodes) {
         derivedStateOf {
@@ -634,14 +678,19 @@ fun ReviewTab(
             // Header
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onMenuClicked) { Icon(Icons.Default.Menu, null, tint = MaterialTheme.colorScheme.onBackground) }
-                    Spacer(Modifier.width(8.dp))
                     Column {
                         Text(com.example.flashcardapp.data.TranslationManager.getString("manage_decks"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
                         Text("${decks.size} deck${if (decks.size == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Row {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { onDarkModeToggle(!isDarkMode) }) {
+                        Icon(
+                            imageVector = if (isDarkMode) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                            contentDescription = if (isDarkMode) "Light Mode" else "Dark Mode",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     IconButton(onClick = onImportApkgClicked) { Icon(Icons.Default.Add, "Import APKG", tint = MaterialTheme.colorScheme.primary) }
                     IconButton(onClick = onImportCsvClicked) { Icon(Icons.Default.Share, "Import CSV", tint = MaterialTheme.colorScheme.primary) }
                     if (isAnkiInstalled && hasPermission) {
@@ -740,10 +789,21 @@ fun ReviewTab(
                             else -> MaterialTheme.colorScheme.surface
                         }
 
+                        val isDragging = draggingNodeId == playableDeck.id
+                        val scale by animateFloatAsState(if (isDragging) 1.03f else 1.0f, label = "scale")
+                        val elevation by animateDpAsState(if (isDragging) 6.dp else 2.dp, label = "elevation")
+                        val translationY = if (isDragging) draggingOffset else 0f
+
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(start = (depth * 16).dp),
+                                .padding(start = (depth * 16).dp)
+                                .scale(scale)
+                                .shadow(elevation, shape = MaterialTheme.shapes.medium)
+                                .graphicsLayer {
+                                    this.translationY = translationY
+                                }
+                                .animateItemPlacement(),
                             shape = MaterialTheme.shapes.medium,
                             colors = CardDefaults.cardColors(
                                 containerColor = cardContainerColor
@@ -773,10 +833,83 @@ fun ReviewTab(
                                     )
                                 }
 
+                                if (playableDeck.id != -1L) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .padding(start = 12.dp)
+                                            .pointerInput(playableDeck.id) {
+                                                detectDragGesturesAfterLongPress(
+                                                    onDragStart = { offset ->
+                                                        draggingNodeId = playableDeck.id
+                                                        draggingOffset = 0f
+                                                        draggingIndex = visibleNodes.indexOfFirst { it.first.deck?.id == playableDeck.id }
+                                                    },
+                                                    onDragEnd = {
+                                                        draggingNodeId = null
+                                                        draggingOffset = 0f
+                                                        draggingIndex = -1
+                                                    },
+                                                    onDragCancel = {
+                                                        draggingNodeId = null
+                                                        draggingOffset = 0f
+                                                        draggingIndex = -1
+                                                    },
+                                                    onDrag = { change, dragAmount ->
+                                                        change.consume()
+                                                        draggingOffset += dragAmount.y
+                                                        val itemHeightPx = 150f
+                                                        val posDiff = (draggingOffset / itemHeightPx).toInt()
+                                                        if (posDiff != 0) {
+                                                            val targetIndex = draggingIndex + posDiff
+                                                            if (targetIndex in visibleNodes.indices) {
+                                                                val targetNode = visibleNodes[targetIndex].first
+                                                                val targetDeck = targetNode.deck
+                                                                if (targetDeck != null && targetDeck.id != -1L) {
+                                                                    val allDeckIds = decks.map { it.id }
+                                                                    val currentOrder = settingsRepo.getDeckOrderList().toMutableList()
+                                                                    allDeckIds.forEach { id ->
+                                                                        if (!currentOrder.contains(id)) {
+                                                                            currentOrder.add(id)
+                                                                        }
+                                                                    }
+                                                                    val idx1 = currentOrder.indexOf(playableDeck.id)
+                                                                    val idx2 = currentOrder.indexOf(targetDeck.id)
+                                                                    if (idx1 != -1 && idx2 != -1) {
+                                                                        val temp = currentOrder[idx1]
+                                                                        currentOrder[idx1] = currentOrder[idx2]
+                                                                        currentOrder[idx2] = temp
+                                                                        settingsRepo.setDeckOrderList(currentOrder)
+                                                                        onDeckOrderChanged()
+                                                                        draggingIndex = targetIndex
+                                                                        draggingOffset -= posDiff * itemHeightPx
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                )
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DragHandle,
+                                            contentDescription = "Drag to Rearrange",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+
                                 Row(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .padding(vertical = 12.dp, horizontal = 16.dp),
+                                        .padding(
+                                            start = if (playableDeck.id != -1L) 4.dp else 16.dp,
+                                            end = 16.dp,
+                                            top = 12.dp,
+                                            bottom = 12.dp
+                                        ),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
@@ -804,32 +937,68 @@ fun ReviewTab(
                                         } else {
                                             Spacer(Modifier.width(28.dp))
                                         }
+                                        val iconBgColor = when (currentDeckMode) {
+                                            McqSessionMode.PRACTICE -> Color.White
+                                            McqSessionMode.REVISION -> Color(0xFFFF9800) // Orange
+                                            McqSessionMode.TEST -> Color(0xFF2196F3) // Blue
+                                            else -> {
+                                                if (hasChildren) MaterialTheme.colorScheme.primaryContainer 
+                                                else MaterialTheme.colorScheme.secondaryContainer
+                                            }
+                                        }
+                                        val iconTintColor = when (currentDeckMode) {
+                                            McqSessionMode.PRACTICE -> Color(0xFF1E1035) // Dark color
+                                            McqSessionMode.REVISION -> Color.White
+                                            McqSessionMode.TEST -> Color.White
+                                            else -> {
+                                                if (hasChildren) MaterialTheme.colorScheme.onPrimaryContainer 
+                                                else MaterialTheme.colorScheme.onSecondaryContainer
+                                            }
+                                        }
                                         Box(
                                             modifier = Modifier
                                                 .size(36.dp)
                                                 .clip(MaterialTheme.shapes.small)
-                                                .background(
-                                                    if (hasChildren) MaterialTheme.colorScheme.primaryContainer 
-                                                    else MaterialTheme.colorScheme.secondaryContainer
+                                                .background(iconBgColor)
+                                                .then(
+                                                    if (currentDeckMode == McqSessionMode.PRACTICE) {
+                                                        Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), MaterialTheme.shapes.small)
+                                                    } else {
+                                                        Modifier
+                                                    }
                                                 ),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
                                                 imageVector = if (hasChildren) Icons.Default.Menu else Icons.AutoMirrored.Filled.List,
                                                 contentDescription = null,
-                                                tint = if (hasChildren) MaterialTheme.colorScheme.onPrimaryContainer 
-                                                       else MaterialTheme.colorScheme.onSecondaryContainer,
+                                                tint = iconTintColor,
                                                 modifier = Modifier.size(18.dp)
                                             )
                                         }
                                         Spacer(Modifier.width(12.dp))
-                                        Column {
+                                        Column(modifier = Modifier.weight(1f)) {
                                             Text(node.shortName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                                             Text(
                                                 if (node.deck != null) "Leaf Deck • ID: ${node.deck.id}"
                                                 else "${node.children.size} sub-decks",
                                                 style = MaterialTheme.typography.labelSmall, 
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        val totalCards = getRecursiveCardCount(node)
+                                        val practiced = getPracticedCount(node, attemptsToday)
+                                        val badgeText = if (practiced > 0) "$practiced/$totalCards Qs" else "$totalCards Qs"
+                                        Surface(
+                                            shape = RoundedCornerShape(50),
+                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                            modifier = Modifier.padding(end = 8.dp)
+                                        ) {
+                                            Text(
+                                                text = badgeText,
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                             )
                                         }
                                     }

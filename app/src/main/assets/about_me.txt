@@ -1,0 +1,41 @@
+========================================================================
+                       ABOUT THE DEVELOPER & ANKIPREP
+========================================================================
+
+Made with ❤️ in India by Vijay Prakash
+
+------------------------------------------------------------------------
+Welcome to AnkiPrep!
+------------------------------------------------------------------------
+AnkiPrep is a premium, offline-first Android application designed to 
+revolutionize how you prepare for exams, learn languages, and retain 
+complex information. Utilizing state-of-the-art learning science, 
+AnkiPrep converts standard flashcards into highly engaging multiple-choice 
+questions (MCQs) utilizing advanced distractor-generation algorithms 
+and Spaced Repetition (FSRS scheduling).
+
+------------------------------------------------------------------------
+About Vijay Prakash
+------------------------------------------------------------------------
+Vijay Prakash is an independent software engineer and technology creator 
+based in India, passionate about building high-fidelity educational tools. 
+Believing that effective learning tools should be fast, offline-first, 
+and accessible to everyone, Vijay developed AnkiPrep to bridge the gap 
+between passive reading and active recall.
+
+Our mission is to help students, developers, medical professionals, 
+and lifelong learners optimize their study time through optimized cognitive 
+science principles.
+
+------------------------------------------------------------------------
+Core Principles of AnkiPrep
+------------------------------------------------------------------------
+1. Cognitive Science: Leveraging active recall and spacing effects to 
+   double retention.
+2. Offline Privacy: Your data belongs to you. All import pipelines and 
+   learning state databases run entirely on your local device.
+3. Premium Aesthetics: Beautiful design options including the signature 
+   Obsidian Bookshelf theme, dynamic styling, and haptic feedback.
+
+Thank you for choosing AnkiPrep. Happy studying!
+========================================================================

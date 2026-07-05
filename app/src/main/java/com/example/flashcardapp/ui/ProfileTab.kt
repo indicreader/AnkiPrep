@@ -1,7 +1,7 @@
 package com.example.flashcardapp.ui
 
 import android.content.Context
-import android.net.Uri
+// Removed duplicate import
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
@@ -32,6 +33,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Intent
+import android.net.Uri
+import org.json.JSONArray
+import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import coil.compose.AsyncImage
 import com.example.flashcardapp.data.entities.SessionRecordEntity
 import com.example.flashcardapp.session.StreakCalculator
@@ -51,7 +58,9 @@ fun Modifier.rotateVertically(clockwise: Boolean = false): Modifier = layout { m
     }
 }
 
-data class Opportunity(
+data class ExamItem(val name: String, val url: String)
+
+ data class Opportunity(
     val title: String,
     val matchPercentage: Int,
     val labelText: String, // PRIMARY TARGET, ELIGIBLE, BACKUP, TOP CHOICE
@@ -82,6 +91,27 @@ fun ProfileTab(
     
     val streakInfo = remember(sessionRecords) { com.example.flashcardapp.session.StreakCalculator.calculate(sessionRecords) }
     val currentStreak = streakInfo.currentStreak
+
+    var exams by remember {
+        mutableStateOf<List<ExamItem>>(
+            sharedPrefs.getString("saved_exams", null)?.let { json ->
+                val list = mutableListOf<ExamItem>()
+                val array = JSONArray(json)
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    list.add(ExamItem(obj.getString("name"), obj.getString("url")))
+                }
+                list.ifEmpty { null }
+            } ?: listOf(
+                ExamItem("UPSC CSE", "https://www.upsc.gov.in/whats-new"),
+                ExamItem("State PSC", "https://www.upsc.gov.in/whats-new")
+            ).also { defaultList ->
+                val jsonArray = JSONArray()
+                defaultList.forEach { jsonArray.put(JSONObject().put("name", it.name).put("url", it.url)) }
+                sharedPrefs.edit().putString("saved_exams", jsonArray.toString()).apply()
+            }
+        )
+    }
 
     val specialistInfo = remember(sessionRecords) {
         if (sessionRecords.isEmpty()) {
@@ -129,6 +159,41 @@ fun ProfileTab(
     val avatarUri = remember(avatarUriStr) { avatarUriStr?.let { Uri.parse(it) } }
 
     var showEditDialog by remember { mutableStateOf(false) }
+    var showAddExamDialog by remember { mutableStateOf(false) }
+    var editingOpp by remember { mutableStateOf<Opportunity?>(null) }
+    var recommendationsVersion by remember { mutableStateOf(0) }
+    var examsVersion by remember { mutableStateOf(0) }
+
+    LaunchedEffect(exams) {
+        withContext(Dispatchers.IO) {
+            for (exam in exams) {
+                try {
+                    val urlConnection = java.net.URL(exam.url).openConnection() as java.net.HttpURLConnection
+                    urlConnection.connectTimeout = 5000
+                    urlConnection.readTimeout = 5000
+                    val html = urlConnection.inputStream.bufferedReader().use { it.readText() }
+                    val newHash = html.hashCode().toString()
+                    val cachedHash = sharedPrefs.getString("exam_hash_${exam.url}", null)
+                    if (cachedHash != null && cachedHash != newHash) {
+                        sharedPrefs.edit()
+                            .putString("exam_hash_${exam.url}", newHash)
+                            .putBoolean("exam_has_delta_${exam.url}", true)
+                            .apply()
+                        
+                        // Trigger native push notification
+                        showExamNotification(context, exam.name)
+                    } else if (cachedHash == null) {
+                        sharedPrefs.edit()
+                            .putString("exam_hash_${exam.url}", newHash)
+                            .apply()
+                    }
+                } catch (e: Exception) {
+                    // Ignore background network/connection failures gracefully
+                }
+            }
+        }
+        examsVersion++
+    }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
@@ -143,132 +208,76 @@ fun ProfileTab(
     val scrollState = rememberScrollState()
 
     // Dynamic suggestions based on user criteria inputs
-    val recommendations = remember(profileAge, profileDegree, profileGoal) {
-        val list = mutableListOf<Opportunity>()
-        
-        when (profileGoal) {
-            "Civil Services" -> {
-                val ageFactor = if (profileAge in 21..32) 9 else 5
-                val degreeFactor = if (profileDegree.contains("Graduate")) 9 else 6
-                
-                list.add(
-                    Opportunity(
-                        title = "UPSC Civil Services",
-                        matchPercentage = 99,
-                        labelText = "PRIMARY TARGET",
-                        labelColor = Color(0xFF1A237E), // deep indigo
-                        subtitle = "Administrative, Police, and Foreign services.",
-                        icon = Icons.Outlined.CheckCircle,
-                        showProgress = true,
-                        progress = 0.42f
-                    )
-                )
-                list.add(
-                    Opportunity(
-                        title = "SSC CGL",
-                        matchPercentage = if (profileDegree.contains("Graduate")) 85 else 45,
-                        labelText = "ELIGIBLE",
-                        labelColor = Color(0xFF6A1B9A), // deep purple
-                        subtitle = if (profileDegree.contains("Graduate")) "Group B & C posts. Graduation requirement met." else "Requires Graduation degree.",
-                        icon = Icons.Outlined.School,
-                        buttonText = "Apply Now"
-                    )
-                )
-                list.add(
-                    Opportunity(
-                        title = "IBPS PO",
-                        matchPercentage = if (profileDegree == "B.Com Graduate") 72 else 60,
-                        labelText = "BACKUP",
-                        labelColor = Color(0xFF37474F), // dark slate
-                        subtitle = if (profileDegree == "B.Com Graduate") "Probationary Officer. Suits Commerce background." else "Probationary Officer in public sector banks.",
-                        icon = Icons.Outlined.AccountBalance,
-                        buttonText = "View Details"
-                    )
-                )
-                list.add(
-                    Opportunity(
-                        title = "State PCS",
-                        matchPercentage = 94,
-                        labelText = "TOP CHOICE",
-                        labelColor = Color(0xFF3F51B5), // blue
-                        subtitle = "State level administrative services. Highly compatible.",
-                        icon = Icons.Outlined.Star,
-                        buttonText = "Explore State S&T"
-                    )
-                )
-            }
-            "Banking" -> {
-                list.add(
-                    Opportunity(
-                        title = "IBPS PO",
-                        matchPercentage = if (profileDegree == "B.Com Graduate") 95 else 80,
-                        labelText = "PRIMARY TARGET",
-                        labelColor = Color(0xFF1A237E),
-                        subtitle = "Suits Commerce background. Officer scale recruitments.",
-                        icon = Icons.Outlined.AccountBalance,
-                        buttonText = "Apply Now"
-                    )
-                )
-                list.add(
-                    Opportunity(
-                        title = "SBI PO",
-                        matchPercentage = if (profileDegree.contains("Graduate")) 92 else 70,
-                        labelText = "TOP CHOICE",
-                        labelColor = Color(0xFF3F51B5),
-                        subtitle = "State Bank of India probationary officer role.",
-                        icon = Icons.Outlined.CheckCircle,
-                        buttonText = "View Details"
-                    )
-                )
-                list.add(
-                    Opportunity(
-                        title = "SSC CGL",
-                        matchPercentage = 75,
-                        labelText = "ELIGIBLE",
-                        labelColor = Color(0xFF6A1B9A),
-                        subtitle = "Graduate level posts in govt departments.",
-                        icon = Icons.Outlined.School,
-                        buttonText = "Explore Posts"
-                    )
-                )
-            }
-            else -> {
-                list.add(
-                    Opportunity(
-                        title = "SSC CGL",
-                        matchPercentage = if (profileDegree.contains("Graduate")) 96 else 50,
-                        labelText = "PRIMARY TARGET",
-                        labelColor = Color(0xFF1A237E),
-                        subtitle = "Staff Selection Commission Combined Graduate Level.",
-                        icon = Icons.Outlined.School,
-                        buttonText = "Apply Now"
-                    )
-                )
-                list.add(
-                    Opportunity(
-                        title = "SSC CHSL",
-                        matchPercentage = 90,
-                        labelText = "ELIGIBLE",
-                        labelColor = Color(0xFF6A1B9A),
-                        subtitle = "12th Pass requirement. Highly compatible.",
-                        icon = Icons.Outlined.CheckCircle,
-                        buttonText = "Apply Now"
-                    )
-                )
-                list.add(
-                    Opportunity(
-                        title = "Railway RRB NTPC",
-                        matchPercentage = 82,
-                        labelText = "TOP CHOICE",
-                        labelColor = Color(0xFF3F51B5),
-                        subtitle = "Non-Technical Popular Categories recruitment.",
-                        icon = Icons.Outlined.Star,
-                        buttonText = "View Openings"
-                    )
-                )
-            }
+    val recommendations = remember(profileAge, profileDegree, profileGoal, recommendationsVersion) {
+        val defaultList = when (profileGoal) {
+            "Civil Services" -> listOf(
+                Opportunity("UPSC Civil Services", 99, "PRIMARY TARGET", Color(0xFF1A237E), "Administrative, Police, and Foreign services.", Icons.Outlined.CheckCircle, showProgress = true, progress = 0.42f),
+                Opportunity("SSC CGL", if (profileDegree.contains("Graduate")) 85 else 45, "ELIGIBLE", Color(0xFF6A1B9A), if (profileDegree.contains("Graduate")) "Group B & C posts. Graduation requirement met." else "Requires Graduation degree.", Icons.Outlined.School, "Apply Now"),
+                Opportunity("IBPS PO", if (profileDegree == "B.Com Graduate") 72 else 60, "BACKUP", Color(0xFF37474F), if (profileDegree == "B.Com Graduate") "Probationary Officer. Suits Commerce background." else "Probationary Officer in public sector banks.", Icons.Outlined.AccountBalance, "View Details"),
+                Opportunity("State PCS", 94, "TOP CHOICE", Color(0xFF3F51B5), "State level administrative services. Highly compatible.", Icons.Outlined.Star, "Explore State S&T")
+            )
+            "Banking" -> listOf(
+                Opportunity("IBPS PO", if (profileDegree == "B.Com Graduate") 95 else 80, "PRIMARY TARGET", Color(0xFF1A237E), "Suits Commerce background. Officer scale recruitments.", Icons.Outlined.AccountBalance, "Apply Now"),
+                Opportunity("SBI PO", if (profileDegree.contains("Graduate")) 92 else 70, "TOP CHOICE", Color(0xFF3F51B5), "State Bank of India probationary officer role.", Icons.Outlined.CheckCircle, "View Details"),
+                Opportunity("SSC CGL", 75, "ELIGIBLE", Color(0xFF6A1B9A), "Graduate level posts in govt departments.", Icons.Outlined.School, "Explore Posts")
+            )
+            else -> listOf(
+                Opportunity("SSC CGL", if (profileDegree.contains("Graduate")) 96 else 50, "PRIMARY TARGET", Color(0xFF1A237E), "Staff Selection Commission Combined Graduate Level.", Icons.Outlined.School, "Apply Now"),
+                Opportunity("SSC CHSL", 90, "ELIGIBLE", Color(0xFF6A1B9A), "12th Pass requirement. Highly compatible.", Icons.Outlined.CheckCircle, "Apply Now"),
+                Opportunity("Railway RRB NTPC", 82, "TOP CHOICE", Color(0xFF3F51B5), "Non-Technical Popular Categories recruitment.", Icons.Outlined.Star, "View Openings")
+            )
         }
-        list
+
+        defaultList.mapNotNull { opp ->
+            val isDeleted = sharedPrefs.getBoolean("opportunity_deleted_${profileGoal}_${opp.title}", false)
+            if (isDeleted) return@mapNotNull null
+            
+            val customTitle = sharedPrefs.getString("opportunity_title_override_${profileGoal}_${opp.title}", opp.title) ?: opp.title
+            val customSubtitle = sharedPrefs.getString("opportunity_subtitle_override_${profileGoal}_${opp.title}", opp.subtitle) ?: opp.subtitle
+            val customMatch = sharedPrefs.getInt("opportunity_match_override_${profileGoal}_${opp.title}", opp.matchPercentage)
+            val customProgress = sharedPrefs.getFloat("opportunity_progress_override_${profileGoal}_${opp.title}", opp.progress)
+            val customLabel = sharedPrefs.getString("opportunity_label_override_${profileGoal}_${opp.title}", opp.labelText) ?: opp.labelText
+            val customShowProgress = sharedPrefs.getBoolean("opportunity_show_progress_override_${profileGoal}_${opp.title}", opp.showProgress)
+            val customColorHex = sharedPrefs.getString("opportunity_color_override_${profileGoal}_${opp.title}", null)
+            val customColor = if (customColorHex != null) {
+                try { Color(android.graphics.Color.parseColor(customColorHex)) } catch (e: Exception) { opp.labelColor }
+            } else opp.labelColor
+
+            opp.copy(
+                title = customTitle,
+                subtitle = customSubtitle,
+                matchPercentage = customMatch,
+                progress = customProgress,
+                labelText = customLabel,
+                showProgress = customShowProgress,
+                labelColor = customColor
+            )
+        }
+    }
+
+    if (showAddExamDialog) {
+        var examName by remember { mutableStateOf("") }
+        var examUrl by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showAddExamDialog = false },
+            title = { Text("Add Exam Link") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = examName, onValueChange = { examName = it }, label = { Text("Exam Name") })
+                    OutlinedTextField(value = examUrl, onValueChange = { examUrl = it }, label = { Text("URL") })
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val newExams = exams + ExamItem(examName, examUrl)
+                    exams = newExams
+                    val jsonArray = JSONArray()
+                    newExams.forEach { jsonArray.put(JSONObject().put("name", it.name).put("url", it.url)) }
+                    sharedPrefs.edit().putString("saved_exams", jsonArray.toString()).apply()
+                    showAddExamDialog = false
+                }) { Text("Save") }
+            }
+        )
     }
 
     if (showEditDialog) {
@@ -555,7 +564,7 @@ fun ProfileTab(
 
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 recommendations.forEach { opt ->
-                    OpportunityCard(opp = opt)
+                    OpportunityCard(opp = opt, onClick = { editingOpp = opt })
                 }
             }
 
@@ -593,8 +602,213 @@ fun ProfileTab(
                 }
             }
 
+            Spacer(Modifier.height(24.dp))
+            // Manual Exam Links Section
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Official Exam Trackers", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                OutlinedButton(onClick = { showAddExamDialog = true }) {
+                    Text("Add Exam")
+                }
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val triggerRecompose = examsVersion // Read to recompose dynamically on state change
+                exams.forEach { exam ->
+                    val hasDelta = sharedPrefs.getBoolean("exam_has_delta_${exam.url}", false)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        TextButton(
+                            onClick = {
+                                sharedPrefs.edit().putBoolean("exam_has_delta_${exam.url}", false).apply()
+                                examsVersion++
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(exam.url))
+                                context.startActivity(intent)
+                            }
+                        ) {
+                            Text(exam.name, color = MaterialTheme.colorScheme.primary)
+                        }
+                        if (hasDelta) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Red)
+                            )
+                        }
+                    }
+                }
+            }
             Spacer(Modifier.height(100.dp))
         }
+    }
+
+    if (editingOpp != null) {
+        val opp = editingOpp!!
+        var title by remember { mutableStateOf(opp.title) }
+        var subtitle by remember { mutableStateOf(opp.subtitle) }
+        var matchPercentage by remember { mutableStateOf(opp.matchPercentage) }
+        var labelText by remember { mutableStateOf(opp.labelText) }
+        var progressPercent by remember { mutableStateOf((opp.progress * 100).toInt()) }
+        var showProgress by remember { mutableStateOf(opp.showProgress) }
+        var selectedColorHex by remember { 
+            mutableStateOf(String.format("#%06X", 0xFFFFFF and opp.labelColor.toArgb())) 
+        }
+
+        val colorsList = listOf(
+            "#1A237E" to "Indigo",
+            "#6A1B9A" to "Purple",
+            "#004D40" to "Teal",
+            "#C62828" to "Red",
+            "#2E7D32" to "Green",
+            "#EF6C00" to "Orange",
+            "#37474F" to "Slate",
+            "#3F51B5" to "Blue"
+        )
+
+        AlertDialog(
+            onDismissRequest = { editingOpp = null },
+            title = { Text("Edit Opportunity") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text("Title") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = subtitle,
+                        onValueChange = { subtitle = it },
+                        label = { Text("Subtitle") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = labelText,
+                        onValueChange = { labelText = it },
+                        label = { Text("Status Label") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Match: $matchPercentage%", style = MaterialTheme.typography.bodyMedium)
+                        Slider(
+                            value = matchPercentage.toFloat(),
+                            onValueChange = { matchPercentage = it.toInt() },
+                            valueRange = 0f..100f,
+                            modifier = Modifier.weight(1f).padding(start = 16.dp)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Show Progress Bar", style = MaterialTheme.typography.bodyMedium)
+                        Switch(
+                            checked = showProgress,
+                            onCheckedChange = { showProgress = it }
+                        )
+                    }
+
+                    if (showProgress) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Progress: $progressPercent%", style = MaterialTheme.typography.bodyMedium)
+                            Slider(
+                                value = progressPercent.toFloat(),
+                                onValueChange = { progressPercent = it.toInt() },
+                                valueRange = 0f..100f,
+                                modifier = Modifier.weight(1f).padding(start = 16.dp)
+                            )
+                        }
+                    }
+
+                    Text("Theme Color", style = MaterialTheme.typography.titleSmall)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        colorsList.forEach { (hex, name) ->
+                            val color = Color(android.graphics.Color.parseColor(hex))
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(color)
+                                    .border(
+                                        width = if (selectedColorHex.equals(hex, ignoreCase = true)) 3.dp else 1.dp,
+                                        color = if (selectedColorHex.equals(hex, ignoreCase = true)) MaterialTheme.colorScheme.primary else Color.LightGray,
+                                        shape = CircleShape
+                                    )
+                                    .clickable { selectedColorHex = hex }
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        sharedPrefs.edit().apply {
+                            putString("opportunity_title_override_${profileGoal}_${opp.title}", title)
+                            putString("opportunity_subtitle_override_${profileGoal}_${opp.title}", subtitle)
+                            putInt("opportunity_match_override_${profileGoal}_${opp.title}", matchPercentage)
+                            putFloat("opportunity_progress_override_${profileGoal}_${opp.title}", progressPercent / 100f)
+                            putString("opportunity_label_override_${profileGoal}_${opp.title}", labelText)
+                            putBoolean("opportunity_show_progress_override_${profileGoal}_${opp.title}", showProgress)
+                            putString("opportunity_color_override_${profileGoal}_${opp.title}", selectedColorHex)
+                            apply()
+                        }
+                        recommendationsVersion++
+                        editingOpp = null
+                    }
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(
+                        onClick = {
+                            sharedPrefs.edit().apply {
+                                putBoolean("opportunity_deleted_${profileGoal}_${opp.title}", true)
+                                apply()
+                            }
+                            recommendationsVersion++
+                            editingOpp = null
+                        }
+                    ) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = { editingOpp = null }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
     }
 }
 
@@ -623,9 +837,9 @@ private fun TargetTag(text: String) {
 }
 
 @Composable
-private fun OpportunityCard(opp: Opportunity) {
+private fun OpportunityCard(opp: Opportunity, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -710,5 +924,30 @@ private fun OpportunityCard(opp: Opportunity) {
             }
         }
     }
+}
+
+fun showExamNotification(context: Context, examName: String) {
+    val channelId = "exam_updates_channel"
+    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+    
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        val channel = android.app.NotificationChannel(
+            channelId,
+            "Exam Tracker Updates",
+            android.app.NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Channel for exam update alerts"
+        }
+        notificationManager.createNotificationChannel(channel)
+    }
+    
+    val builder = androidx.core.app.NotificationCompat.Builder(context, channelId)
+        .setSmallIcon(android.R.drawable.ic_dialog_info)
+        .setContentTitle("Official Exam Tracker Alert")
+        .setContentText("New announcement detected on: $examName")
+        .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
+        .setAutoCancel(true)
+        
+    notificationManager.notify(examName.hashCode(), builder.build())
 }
 

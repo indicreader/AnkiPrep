@@ -9,7 +9,7 @@ import android.util.Log
  * Represents a raw deck fetched from the AnkiDroid content provider. The [name] may contain '::'
  * hierarchy separators.
  */
-data class AnkiDeck(val id: Long, val name: String)
+data class AnkiDeck(val id: Long, val name: String, val cardCount: Int = 0)
 
 /**
  * Represents a raw flashcard fetched from AnkiDroid. Includes [tags] extracted from the notes
@@ -232,12 +232,12 @@ object AnkiDroidBridge {
 
     private fun getMockDecks(): List<AnkiDeck> {
         return listOf(
-                AnkiDeck(1001, "General Knowledge & Trivia"),
-                AnkiDeck(1002, "Kotlin & Jetpack Compose"),
-                AnkiDeck(1003, "World Geography"),
-                AnkiDeck(1004, "Science::Biology::Genetics"),
-                AnkiDeck(1005, "Science::Biology::Ecology"),
-                AnkiDeck(1006, "Science::Physics")
+                AnkiDeck(1001, "General Knowledge & Trivia", 12),
+                AnkiDeck(1002, "Kotlin & Jetpack Compose", 12),
+                AnkiDeck(1003, "World Geography", 10),
+                AnkiDeck(1004, "Science::Biology::Genetics", 10),
+                AnkiDeck(1005, "Science::Biology::Ecology", 10),
+                AnkiDeck(1006, "Science::Physics", 10)
         )
     }
 
