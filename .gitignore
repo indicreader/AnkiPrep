@@ -1,3 +1,7 @@
+# JADX decompiler tool (not part of app)
+jadx.zip
+jadx/
+
 # Gradle files
 .gradle/
 build/
