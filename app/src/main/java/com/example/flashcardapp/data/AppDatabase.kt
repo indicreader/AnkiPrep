@@ -179,5 +179,12 @@ abstract class AppDatabase : RoomDatabase() {
                     .also { INSTANCE = it }
             }
         }
+
+        fun closeInstance() {
+            synchronized(this) {
+                INSTANCE?.close()
+                INSTANCE = null
+            }
+        }
     }
 }

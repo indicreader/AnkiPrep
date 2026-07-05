@@ -46,6 +46,7 @@ import com.example.flashcardapp.session.WeakCardSelector
 import com.example.flashcardapp.data.entities.CardEntity
 import com.example.flashcardapp.ui.DeckSelectionScreen
 import com.example.flashcardapp.ui.ImportDeckDialog
+import com.example.flashcardapp.ui.CsvMappingDialog
 import com.example.flashcardapp.ui.QuizScreen
 import com.example.flashcardapp.ui.ResultsScreen
 import com.example.flashcardapp.ui.ReviewMistakesScreen
@@ -810,7 +811,12 @@ fun MainLayout(
      // Unified import states for CSV, APKG, and EPUB
      var pendingImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
      var pendingImportType by remember { mutableStateOf<String?>(null) } // "CSV", "APKG", or "EPUB"
-     var showImportDialog by remember { mutableStateOf(false) }
+      var showImportDialog by remember { mutableStateOf(false) }
+      var showMappingDialog by remember { mutableStateOf(false) }
+      var mappingTargetDeckId by remember { mutableStateOf<Long?>(null) }
+      var mappingTargetDeckName by remember { mutableStateOf<String?>(null) }
+      var mappingCustomName by remember { mutableStateOf("") }
+      var mappingDuplicateStrategy by remember { mutableStateOf("UPDATE") }
 
      // APKG document picker launcher
      val importPickerLauncher = rememberLauncherForActivityResult(
@@ -878,27 +884,112 @@ fun MainLayout(
              onNewDeck = { customName, duplicateStrategy ->
                  showImportDialog = false
                  val fileUri = pendingImportUri ?: return@ImportDeckDialog
+                 if (fileType == "CSV") {
+                     mappingCustomName = customName
+                     mappingDuplicateStrategy = duplicateStrategy
+                     mappingTargetDeckId = null
+                     mappingTargetDeckName = null
+                     showMappingDialog = true
+                 } else {
+                     pendingImportUri = null
+                     pendingImportType = null
+                     coroutineScope.launch {
+                         Toast.makeText(context, "Importing $fileType as new deck...", Toast.LENGTH_SHORT).show()
+                         val result = if (fileType == "APKG") {
+                             if (customName.isNotEmpty()) {
+                                 repo.importApkg(fileUri, targetDeckName = customName)
+                             } else {
+                                 repo.importApkg(fileUri)
+                             }
+                         } else {
+                             if (customName.isNotEmpty()) {
+                                 repo.importEpub(fileUri, targetDeckName = customName)
+                             } else {
+                                 repo.importEpub(fileUri)
+                             }
+                         }
+                         if (result.success) {
+                             Toast.makeText(
+                                 context,
+                                 "Successfully imported: ${result.fileName}\nDecks/Cards: ${result.totalCards}",
+                                 Toast.LENGTH_LONG
+                             ).show()
+                             reloadDbStats()
+                         } else {
+                             Toast.makeText(
+                                 context,
+                                 "Import failed: ${result.error}",
+                                 Toast.LENGTH_LONG
+                             ).show()
+                         }
+                     }
+                 }
+             },
+             onMergeIntoDeck = { targetId, targetName, duplicateStrategy ->
+                 showImportDialog = false
+                 val fileUri = pendingImportUri ?: return@ImportDeckDialog
+                 if (fileType == "CSV") {
+                     mappingTargetDeckId = targetId
+                     mappingTargetDeckName = targetName
+                     mappingDuplicateStrategy = duplicateStrategy
+                     mappingCustomName = ""
+                     showMappingDialog = true
+                 } else {
+                     pendingImportUri = null
+                     pendingImportType = null
+                     coroutineScope.launch {
+                         Toast.makeText(context, "Merging $fileType into '$targetName'...", Toast.LENGTH_SHORT).show()
+                         val result = if (fileType == "APKG") {
+                             repo.importApkg(fileUri, targetDeckId = targetId, targetDeckName = targetName)
+                         } else {
+                             repo.importEpub(fileUri, targetDeckId = targetId, targetDeckName = targetName)
+                         }
+                         if (result.success) {
+                             Toast.makeText(
+                                 context,
+                                 "Merged ${result.totalCards} cards into '$targetName'",
+                                 Toast.LENGTH_LONG
+                             ).show()
+                             reloadDbStats()
+                         } else {
+                             Toast.makeText(
+                                 context,
+                                 "Merge failed: ${result.error}",
+                                 Toast.LENGTH_LONG
+                             ).show()
+                         }
+                     }
+                 }
+             }
+         )
+     }
+
+     if (showMappingDialog && pendingImportUri != null) {
+         CsvMappingDialog(
+             uri = pendingImportUri!!,
+             onDismiss = {
+                 showMappingDialog = false
                  pendingImportUri = null
                  pendingImportType = null
+             },
+             onConfirm = { mapping ->
+                 showMappingDialog = false
+                 val fileUri = pendingImportUri ?: return@CsvMappingDialog
+                 pendingImportUri = null
+                 pendingImportType = null
+                 val targetId = mappingTargetDeckId
+                 val targetName = mappingTargetDeckName
+                 val customName = mappingCustomName
+                 val duplicateStrategy = mappingDuplicateStrategy
+
                  coroutineScope.launch {
-                     Toast.makeText(context, "Importing $fileType as new deck...", Toast.LENGTH_SHORT).show()
-                     val result = if (fileType == "APKG") {
-                         if (customName.isNotEmpty()) {
-                             repo.importApkg(fileUri, targetDeckName = customName)
-                         } else {
-                             repo.importApkg(fileUri)
-                         }
-                     } else if (fileType == "EPUB") {
-                         if (customName.isNotEmpty()) {
-                             repo.importEpub(fileUri, targetDeckName = customName)
-                         } else {
-                             repo.importEpub(fileUri)
-                         }
+                     Toast.makeText(context, "Parsing and importing CSV...", Toast.LENGTH_SHORT).show()
+                     val result = if (targetId != null && targetName != null) {
+                         repo.importCsvIntoExistingDeck(fileUri, targetId, targetName, duplicateStrategy, mapping)
                      } else {
                          if (customName.isNotEmpty()) {
-                             val tempResult = repo.importCsv(fileUri, duplicateStrategy)
+                             val tempResult = repo.importCsv(fileUri, duplicateStrategy, mapping)
                              if (tempResult.success) {
-                                 // Rename target deck to custom name
                                  val createdDeck = repo.getAllDecks().find { it.name == tempResult.fileName.removeSuffix(".csv") || it.name == tempResult.fileName }
                                  if (createdDeck != null) {
                                      repo.renameDeck(createdDeck.id, customName)
@@ -906,7 +997,7 @@ fun MainLayout(
                              }
                              tempResult
                          } else {
-                             repo.importCsv(fileUri, duplicateStrategy)
+                             repo.importCsv(fileUri, duplicateStrategy, mapping)
                          }
                      }
                      if (result.success) {
@@ -920,36 +1011,6 @@ fun MainLayout(
                          Toast.makeText(
                              context,
                              "Import failed: ${result.error}",
-                             Toast.LENGTH_LONG
-                         ).show()
-                     }
-                 }
-             },
-             onMergeIntoDeck = { targetId, targetName, duplicateStrategy ->
-                 showImportDialog = false
-                 val fileUri = pendingImportUri ?: return@ImportDeckDialog
-                 pendingImportUri = null
-                 pendingImportType = null
-                 coroutineScope.launch {
-                     Toast.makeText(context, "Merging $fileType into '$targetName'...", Toast.LENGTH_SHORT).show()
-                     val result = if (fileType == "APKG") {
-                         repo.importApkg(fileUri, targetDeckId = targetId, targetDeckName = targetName)
-                     } else if (fileType == "EPUB") {
-                         repo.importEpub(fileUri, targetDeckId = targetId, targetDeckName = targetName)
-                     } else {
-                         repo.importCsvIntoExistingDeck(fileUri, targetId, targetName, duplicateStrategy)
-                     }
-                     if (result.success) {
-                         Toast.makeText(
-                             context,
-                             "Merged ${result.totalCards} cards into '$targetName'",
-                             Toast.LENGTH_LONG
-                         ).show()
-                         reloadDbStats()
-                     } else {
-                         Toast.makeText(
-                             context,
-                             "Merge failed: ${result.error}",
                              Toast.LENGTH_LONG
                          ).show()
                      }

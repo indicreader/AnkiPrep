@@ -128,6 +128,56 @@ fun SettingsTab(
 
     var showGuideModal by remember { mutableStateOf(false) }
 
+    val coroutineScope = rememberCoroutineScope()
+    var showSyncScreen by remember { mutableStateOf(false) }
+    var isBackingUp by remember { mutableStateOf(false) }
+    var isRestoring by remember { mutableStateOf(false) }
+    var backupSafUri by remember { mutableStateOf(repository.backupSafUri) }
+    var backupInterval by remember { mutableStateOf(repository.backupInterval) }
+
+    val backupDirPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        uri?.let {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(it, flags)
+            repository.backupSafUri = it.toString()
+            backupSafUri = it.toString()
+            com.example.flashcardapp.data.backup.BackupScheduler.updateSchedule(context)
+            android.widget.Toast.makeText(context, "Backup folder configured successfully!", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val restoreFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            coroutineScope.launch {
+                isRestoring = true
+                val success = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        context.contentResolver.openInputStream(it)?.use { inputStream ->
+                            com.example.flashcardapp.data.backup.BackupRestoreUtils.importBackup(context, inputStream)
+                        } ?: false
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
+                isRestoring = false
+                if (success) {
+                    android.widget.Toast.makeText(context, "Database restored successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    android.widget.Toast.makeText(context, "Failed to restore database", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    if (showSyncScreen) {
+        SyncScreen(onBack = { showSyncScreen = false })
+        return
+    }
+
 
 
     // Practice mode states
@@ -1114,6 +1164,173 @@ fun SettingsTab(
                                         })
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── BACKUP & SYNCHRONIZATION ──────────────────────────────────────
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SectionLabel("BACKUP & SYNCHRONIZATION", isDarkMode)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                    border = BorderStroke(1.dp, cardBorderColor),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        // Wi-Fi Sync Engine Row
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Outlined.Wifi, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Column {
+                                    Text("Local Wi-Fi Sync Engine", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                    Text("Secure database mirroring across devices", fontSize = 11.sp, color = subtextColor)
+                                }
+                            }
+                            Button(
+                                onClick = { showSyncScreen = true },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), contentColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Text("Open Engine", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        HorizontalDivider(color = dividerColor, thickness = 0.5.dp)
+
+                        // SAF Folder Picker Row
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Outlined.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Column {
+                                    Text("Backup Folder (SAF)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                    val folderLabel = if (backupSafUri != null) {
+                                        val uriParts = Uri.parse(backupSafUri).lastPathSegment ?: "Configured Directory"
+                                        "Saved: $uriParts"
+                                    } else {
+                                        "No folder selected"
+                                    }
+                                    Text(folderLabel, fontSize = 11.sp, color = subtextColor)
+                                }
+                            }
+                            Button(
+                                onClick = { backupDirPickerLauncher.launch(null) },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), contentColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Text("Choose Directory", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        HorizontalDivider(color = dividerColor, thickness = 0.5.dp)
+
+                        // Auto Daily Backup Row
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Outlined.CloudUpload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Column {
+                                    Text("Auto Daily Backup", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = primaryTextColor)
+                                    Text("Backup automatically at midnight daily", fontSize = 11.sp, color = subtextColor)
+                                }
+                            }
+                            Switch(
+                                checked = backupInterval == "DAILY",
+                                onCheckedChange = { isChecked ->
+                                    val newInterval = if (isChecked) "DAILY" else "NONE"
+                                    repository.backupInterval = newInterval
+                                    backupInterval = newInterval
+                                    com.example.flashcardapp.data.backup.BackupScheduler.updateSchedule(context)
+                                    if (isChecked && backupSafUri == null) {
+                                        android.widget.Toast.makeText(context, "Please configure backup folder first!", android.widget.Toast.LENGTH_LONG).show()
+                                    }
+                                },
+                                colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
+                            )
+                        }
+
+                        HorizontalDivider(color = dividerColor, thickness = 0.5.dp)
+
+                        // Manual actions (Backup Now, Restore Backup)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    if (backupSafUri == null) {
+                                        android.widget.Toast.makeText(context, "Configure backup folder first!", android.widget.Toast.LENGTH_SHORT).show()
+                                        return@Button
+                                    }
+                                    coroutineScope.launch {
+                                        isBackingUp = true
+                                        val success = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            try {
+                                                val treeUri = Uri.parse(backupSafUri)
+                                                val docDir = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, treeUri)
+                                                if (docDir == null || !docDir.exists() || !docDir.canWrite()) return@withContext false
+                                                
+                                                val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+                                                val backupFileName = "ankiprep_backup_$timestamp.zip"
+                                                val newFile = docDir.createFile("application/zip", backupFileName) ?: return@withContext false
+                                                
+                                                context.contentResolver.openOutputStream(newFile.uri)?.use { outputStream ->
+                                                    com.example.flashcardapp.data.backup.BackupRestoreUtils.exportBackup(context, outputStream)
+                                                } ?: false
+                                            } catch (e: Exception) {
+                                                false
+                                            }
+                                        }
+                                        isBackingUp = false
+                                        if (success) {
+                                            android.widget.Toast.makeText(context, "Backup created successfully!", android.widget.Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            android.widget.Toast.makeText(context, "Backup failed", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                enabled = !isBackingUp,
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), contentColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Icon(Icons.Outlined.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(if (isBackingUp) "Backing up..." else "Backup Now", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = {
+                                    restoreFilePickerLauncher.launch(arrayOf("application/zip"))
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                enabled = !isRestoring,
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f), contentColor = MaterialTheme.colorScheme.secondary)
+                            ) {
+                                Icon(Icons.Outlined.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(if (isRestoring) "Restoring..." else "Restore Backup", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

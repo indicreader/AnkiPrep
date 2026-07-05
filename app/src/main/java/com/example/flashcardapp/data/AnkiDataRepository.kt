@@ -436,8 +436,8 @@ class AnkiDataRepository(
     }
 
     /** Imports a .csv flashcard file into the Room database as a new deck. */
-    suspend fun importCsv(uri: Uri, duplicateStrategy: String = "UPDATE"): ImportResult {
-        val result = CsvImporter.importCsv(context, uri, duplicateStrategy = duplicateStrategy)
+    suspend fun importCsv(uri: Uri, duplicateStrategy: String = "UPDATE", columnMapping: Map<Int, String>? = null): ImportResult {
+        val result = CsvImporter.importCsv(context, uri, duplicateStrategy = duplicateStrategy, columnMapping = columnMapping)
         if (result.success) {
             fsrsScheduler.initializeNewCards()
         }
@@ -454,9 +454,10 @@ class AnkiDataRepository(
         uri: Uri,
         targetDeckId: Long,
         targetDeckName: String,
-        duplicateStrategy: String = "UPDATE"
+        duplicateStrategy: String = "UPDATE",
+        columnMapping: Map<Int, String>? = null
     ): ImportResult {
-        val result = CsvImporter.importCsv(context, uri, targetDeckId, targetDeckName, duplicateStrategy)
+        val result = CsvImporter.importCsv(context, uri, targetDeckId, targetDeckName, duplicateStrategy, columnMapping)
         if (result.success) {
             fsrsScheduler.initializeNewCards()
         }

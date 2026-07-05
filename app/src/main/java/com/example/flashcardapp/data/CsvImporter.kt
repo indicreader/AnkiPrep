@@ -40,7 +40,8 @@ object CsvImporter {
         uri: Uri,
         targetDeckId: Long? = null,
         targetDeckName: String? = null,
-        duplicateStrategy: String = "UPDATE" // "SKIP", "IMPORT", "UPDATE"
+        duplicateStrategy: String = "UPDATE", // "SKIP", "IMPORT", "UPDATE"
+        columnMapping: Map<Int, String>? = null
     ): ImportResult = withContext(Dispatchers.IO) {
         val fileName = getFileName(context, uri)
         // Resolve the deck identity: merge into existing OR create new
@@ -123,26 +124,57 @@ object CsvImporter {
                 var back = ""
                 var tagsJson = "[]"
 
-                if (parts.size >= 3) {
-                    tagsRaw = parts[0].trim().trimQuotes()
-                    front = parts[1].trim().trimQuotes()
-                    back = parts[2].trim().trimQuotes()
+                if (columnMapping != null) {
+                    var question = ""
+                    var answer = ""
+                    var explanation = ""
+                    val tagsList = mutableListOf<String>()
+                    val optionsList = mutableListOf<String>()
 
-                    if (parts.size >= 4) {
-                        val explanation = parts[3].trim().trimQuotes()
-                        if (explanation.isNotEmpty()) {
-                            back = "$back {explain} $explanation"
+                    columnMapping.forEach { (colIndex, mapping) ->
+                        val cellValue = parts.getOrNull(colIndex)?.trim()?.trimQuotes() ?: ""
+                        if (cellValue.isNotEmpty()) {
+                            when (mapping) {
+                                "FRONT" -> question = cellValue
+                                "BACK" -> answer = cellValue
+                                "EXPLANATION" -> explanation = cellValue
+                                "TAGS" -> tagsList.addAll(cellValue.split(",", " ").map { it.trim() }.filter { it.isNotEmpty() })
+                                "OPTION_A", "OPTION_B", "OPTION_C", "OPTION_D", "OPTION" -> optionsList.add(cellValue)
+                            }
                         }
                     }
-                } else if (parts.size == 2) {
-                    front = parts[0].trim().trimQuotes()
-                    back = parts[1].trim().trimQuotes()
+
+                    if (question.isEmpty() || answer.isEmpty()) continue
+                    front = question
+                    back = answer
+                    if (optionsList.isNotEmpty()) {
+                        back = "$back | ${optionsList.joinToString(" | ")}"
+                    }
+                    if (explanation.isNotEmpty()) {
+                        back = "$back {explain} $explanation"
+                    }
+                    tagsJson = gson.toJson(tagsList)
+                } else {
+                    if (parts.size >= 3) {
+                        tagsRaw = parts[0].trim().trimQuotes()
+                        front = parts[1].trim().trimQuotes()
+                        back = parts[2].trim().trimQuotes()
+
+                        if (parts.size >= 4) {
+                            val explanation = parts[3].trim().trimQuotes()
+                            if (explanation.isNotEmpty()) {
+                                back = "$back {explain} $explanation"
+                            }
+                        }
+                    } else if (parts.size == 2) {
+                        front = parts[0].trim().trimQuotes()
+                        back = parts[1].trim().trimQuotes()
+                    }
+
+                    if (front.isEmpty() || back.isEmpty()) continue
+                    val tags = tagsRaw.split(",", " ").map { it.trim() }.filter { it.isNotEmpty() }
+                    tagsJson = gson.toJson(tags)
                 }
-
-                if (front.isEmpty() || back.isEmpty()) continue
-
-                val tags = tagsRaw.split(",", " ").map { it.trim() }.filter { it.isNotEmpty() }
-                tagsJson = gson.toJson(tags)
 
                 // Stable card ID: deck hash XOR row index
                 var cardId = (deckId xor index.toLong())

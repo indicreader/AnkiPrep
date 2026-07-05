@@ -14,6 +14,7 @@ local.properties
 .DS_Store
 Thumbs.db
 desktop.ini
+*.bat
 
 # IntelliJ / Android Studio files
 *.iml
@@ -79,6 +80,7 @@ __pycache__/
 # Misc temp files
 *.tmp
 *.bak
+*.bat
 diff.txt
 diff_utf8.txt
 b64.txt

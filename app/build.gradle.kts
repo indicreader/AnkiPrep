@@ -13,8 +13,8 @@ android {
         minSdk = 26
         targetSdk = 34
         // Version scheme: 0.10 -> 0.20 -> 0.30 ...
-        versionCode = 122
-        versionName = "4.58"
+        versionCode = 125
+        versionName = "4.61"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -106,6 +106,10 @@ dependencies {
 
     // Google ML Kit Text Recognition for Tier 2 OCR Fallback
     implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.0")
+
+    // DocumentFile & WorkManager
+    implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 }
 
 // ── Fixed APK release folder ─────────────────────────────────────────────────

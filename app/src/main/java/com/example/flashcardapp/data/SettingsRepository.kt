@@ -139,6 +139,14 @@ class SettingsRepository private constructor(context: Context) {
         get() = prefs.getString("user_email", "") ?: ""
         set(value) = prefs.edit().putString("user_email", value).apply()
 
+    var backupSafUri: String?
+        get() = prefs.getString("backup_saf_uri", null)
+        set(value) = prefs.edit().putString("backup_saf_uri", value).apply()
+
+    var backupInterval: String
+        get() = prefs.getString("backup_interval", "NONE") ?: "NONE"
+        set(value) = prefs.edit().putString("backup_interval", value).apply()
+
     var userTarget: String
         get() = prefs.getString("user_target", "") ?: ""
         set(value) = prefs.edit().putString("user_target", value).apply()
