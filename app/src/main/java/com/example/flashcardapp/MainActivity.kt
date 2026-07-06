@@ -1281,8 +1281,14 @@ fun MainLayout(
                     val progressManager = com.example.flashcardapp.data.PersistentProgressManager(context)
                     val generationEngine = com.example.flashcardapp.session.SessionGenerationEngine(context)
 
+                    val resolvedDeckName = if (screen.deck.id > 0) {
+                        repo.getDeckById(screen.deck.id)?.fullPath ?: screen.deck.name
+                    } else {
+                        screen.deck.name
+                    }
+
                     val remainingUnique = generationEngine.getRemainingUniqueCards(
-                        deckHierarchy = screen.deck.name,
+                        deckHierarchy = resolvedDeckName,
                         deckId = screen.deck.id,
                         isStarredOnly = screen.isStarredOnly,
                         customDeckIds = screen.customDeckIds
@@ -1303,7 +1309,7 @@ fun MainLayout(
                         allCards = repo.getAllCards()
                         targetCards = allCards.filter { screen.customDeckIds.contains(it.deckId) }
                     } else {
-                        allCards = repo.getCardsForHierarchy(screen.deck.name)
+                        allCards = repo.getCardsForHierarchy(resolvedDeckName)
                         targetCards = allCards
                     }
 

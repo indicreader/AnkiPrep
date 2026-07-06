@@ -768,7 +768,8 @@ fun ReviewTab(
                     state = listState,
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(bottom = 80.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    userScrollEnabled = (draggingNodeId == null)
                 ) {
                     items(visibleNodes, key = { it.first.fullPath }) { (node, depth) ->
                         val isExpanded = if (searchQuery.isNotBlank()) true else node.fullPath in expandedNodes

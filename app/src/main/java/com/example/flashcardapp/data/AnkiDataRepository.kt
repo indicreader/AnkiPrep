@@ -247,6 +247,11 @@ class AnkiDataRepository(
         deckDao.getAllDecksOnce()
     }
 
+    /** One-shot fetch of a single deck by its ID. */
+    suspend fun getDeckById(deckId: Long): DeckEntity? = withContext(Dispatchers.IO) {
+        deckDao.getDeckById(deckId)
+    }
+
     /** One-shot fetch of root-level decks (no parent). */
     suspend fun getRootDecks(): List<DeckEntity> = withContext(Dispatchers.IO) {
         deckDao.getRootDecks()
