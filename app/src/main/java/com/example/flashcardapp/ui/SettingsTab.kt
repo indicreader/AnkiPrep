@@ -1355,8 +1355,13 @@ fun SettingsTab(
                         indication = null
                     ) {
                         tapCount++
-                        if (tapCount >= 7) {
+                        if (tapCount == 5) {
+                            android.widget.Toast.makeText(context, "2 more taps", android.widget.Toast.LENGTH_SHORT).show()
+                        } else if (tapCount == 6) {
+                            android.widget.Toast.makeText(context, "1 more tap", android.widget.Toast.LENGTH_SHORT).show()
+                        } else if (tapCount >= 7) {
                             tapCount = 0
+                            android.widget.Toast.makeText(context, "enter the secret code", android.widget.Toast.LENGTH_SHORT).show()
                             showPasswordDialog = true
                         }
                     },
