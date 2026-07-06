@@ -869,25 +869,33 @@ fun ReviewTab(
                                                                 val targetNode = visibleNodes[targetIndex].first
                                                                 val targetDeck = targetNode.deck
                                                                 if (targetDeck != null && targetDeck.id != -1L) {
-                                                                    val allDeckIds = decks.map { it.id }
-                                                                    val currentOrder = settingsRepo.getDeckOrderList().toMutableList()
-                                                                    allDeckIds.forEach { id ->
-                                                                        if (!currentOrder.contains(id)) {
-                                                                            currentOrder.add(id)
-                                                                        }
-                                                                    }
-                                                                    val idx1 = currentOrder.indexOf(playableDeck.id)
-                                                                    val idx2 = currentOrder.indexOf(targetDeck.id)
-                                                                    if (idx1 != -1 && idx2 != -1) {
-                                                                        val temp = currentOrder[idx1]
-                                                                        currentOrder[idx1] = currentOrder[idx2]
-                                                                        currentOrder[idx2] = temp
-                                                                        settingsRepo.setDeckOrderList(currentOrder)
-                                                                        onDeckOrderChanged()
-                                                                        draggingIndex = targetIndex
-                                                                        draggingOffset -= posDiff * itemHeightPx
-                                                                    }
-                                                                }
+                                                                 val getParentPath = { name: String ->
+                                                                 val idx = name.lastIndexOf("::")
+                                                                 if (idx != -1) name.substring(0, idx) else ""
+                                                                 }
+                                                                 val draggedParent = getParentPath(playableDeck.name)
+                                                                 val targetParent = getParentPath(targetDeck.name)
+                                                                 if (draggedParent == targetParent) {
+                                                                 val allDeckIds = decks.map { it.id }
+                                                                 val currentOrder = settingsRepo.getDeckOrderList().toMutableList()
+                                                                 allDeckIds.forEach { id ->
+                                                                 if (!currentOrder.contains(id)) {
+                                                                 currentOrder.add(id)
+                                                                 }
+                                                                 }
+                                                                 val idx1 = currentOrder.indexOf(playableDeck.id)
+                                                                 val idx2 = currentOrder.indexOf(targetDeck.id)
+                                                                 if (idx1 != -1 && idx2 != -1) {
+                                                                 val temp = currentOrder[idx1]
+                                                                 currentOrder[idx1] = currentOrder[idx2]
+                                                                 currentOrder[idx2] = temp
+                                                                 settingsRepo.setDeckOrderList(currentOrder)
+                                                                 onDeckOrderChanged()
+                                                                 draggingIndex = targetIndex
+                                                                 draggingOffset -= posDiff * itemHeightPx
+                                                                 }
+                                                                 }
+                                                                 }
                                                             }
                                                         }
                                                     }
