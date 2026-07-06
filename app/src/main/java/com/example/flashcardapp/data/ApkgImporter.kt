@@ -77,11 +77,12 @@ object ApkgImporter {
                 dbEntry = zipFile.getEntry("collection.anki2")
             }
             if (dbEntry == null) {
-                // Fallback: look for any entry whose name starts with collection.anki2
+                // Fallback: look for any entry containing collection.anki2 or collection.anki21 case-insensitively
                 val entries = zipFile.entries()
                 while (entries.hasMoreElements()) {
                     val entry = entries.nextElement()
-                    if (entry.name.startsWith("collection.anki2")) {
+                    val name = entry.name.lowercase()
+                    if (name.contains("collection.anki21") || name.contains("collection.anki2")) {
                         dbEntry = entry
                         break
                     }
@@ -105,8 +106,8 @@ object ApkgImporter {
             }
             zipFile.close()
 
-            // Step 3: Open SQLite Database in read-only mode
-            db = SQLiteDatabase.openDatabase(tempDbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+            // Step 3: Open SQLite Database in read-write mode to prevent WAL CantOpenException
+            db = SQLiteDatabase.openDatabase(tempDbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
 
             // Step 4: Parse Decks
             val decksMap = parseDecks(db)

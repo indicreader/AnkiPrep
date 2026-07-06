@@ -112,18 +112,40 @@ fun CsvMappingDialog(
                     previewRows = rows
                 }
 
-                // Initialize default mappings:
-                // Column 0 -> FRONT (Question)
-                // Column 1 -> BACK (Answer)
-                // Column 2 -> TAGS
-                // Column 3 -> EXPLANATION
+                // Initialize default mappings dynamically
+                val headerRow = if (isHeader) rows.first().map { it.lowercase().trim().removeSurrounding("\"") } else emptyList()
+                
                 for (colIndex in 0 until maxCols) {
-                    columnMappings[colIndex] = when (colIndex) {
-                        0 -> "FRONT"
-                        1 -> "BACK"
-                        2 -> "TAGS"
-                        3 -> "EXPLANATION"
-                        else -> "NONE"
+                    val headerName = headerRow.getOrNull(colIndex) ?: ""
+                    columnMappings[colIndex] = when {
+                        // 1. Heuristic based on header names:
+                        headerName.contains("question") || headerName.contains("front") || headerName == "q" || headerName == "term" -> "FRONT"
+                        headerName.contains("answer") || headerName.contains("back") || headerName == "a" || headerName == "definition" -> "BACK"
+                        headerName.contains("explain") || headerName.contains("exp") || headerName == "notes" || headerName == "details" -> "EXPLANATION"
+                        headerName.contains("tag") -> "TAGS"
+                        headerName.contains("option") -> "OPTION"
+                        
+                        // 2. Count-based fallback if no header match:
+                        else -> when (maxCols) {
+                            3 -> when (colIndex) {
+                                0 -> "FRONT"
+                                1 -> "BACK"
+                                2 -> "EXPLANATION"
+                                else -> "NONE"
+                            }
+                            2 -> when (colIndex) {
+                                0 -> "FRONT"
+                                1 -> "BACK"
+                                else -> "NONE"
+                            }
+                            else -> when (colIndex) {
+                                0 -> "FRONT"
+                                1 -> "BACK"
+                                2 -> "TAGS"
+                                3 -> "EXPLANATION"
+                                else -> "NONE"
+                            }
+                        }
                     }
                 }
             }
