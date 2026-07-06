@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -605,6 +606,7 @@ fun ReviewTab(
     var draggingNodeId by remember { mutableStateOf<Long?>(null) }
     var draggingOffset by remember { mutableFloatStateOf(0f) }
     var draggingIndex by remember { mutableIntStateOf(-1) }
+    var draggingItemHeightPx by remember { mutableFloatStateOf(200f) }
 
     val visibleNodes by remember(filteredTree, searchQuery, expandedNodes) {
         derivedStateOf {
@@ -800,10 +802,11 @@ fun ReviewTab(
                                 .padding(start = (depth * 16).dp)
                                 .scale(scale)
                                 .shadow(elevation, shape = MaterialTheme.shapes.medium)
-                                .graphicsLayer {
-                                    this.translationY = translationY
-                                }
-                                .animateItemPlacement(),
+                                .graphicsLayer { this.translationY = translationY }
+                                .animateItemPlacement()
+                                .onGloballyPositioned { coords ->
+                                    if (isDragging) draggingItemHeightPx = coords.size.height.toFloat().coerceAtLeast(80f)
+                                },
                             shape = MaterialTheme.shapes.medium,
                             colors = CardDefaults.cardColors(
                                 containerColor = cardContainerColor
@@ -858,7 +861,7 @@ fun ReviewTab(
                                                     onDrag = { change, dragAmount ->
                                                         change.consume()
                                                         draggingOffset += dragAmount.y
-                                                        val itemHeightPx = 150f
+                                                        val itemHeightPx = draggingItemHeightPx
                                                         val posDiff = (draggingOffset / itemHeightPx).toInt()
                                                         if (posDiff != 0) {
                                                             val targetIndex = draggingIndex + posDiff
