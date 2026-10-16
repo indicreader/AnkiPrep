@@ -284,6 +284,14 @@ fun SettingsTab(
                         SettingsCategory.INSTRUCTIONS -> {
                             InstructionsSection()
                         }
+
+                        SettingsCategory.ABOUT -> {
+                            AboutCategoryScreen(
+                                onNavigateToSubCategory = { subCat ->
+                                    navigateTo(SettingsRoute.SubCategory(route.category, subCat))
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -396,6 +404,12 @@ fun SettingsTab(
 
                         SettingsCategory.PROFILE -> {
                             ProfileSubCategoryScreen(
+                                subCategory = route.subCategory
+                            )
+                        }
+
+                        SettingsCategory.ABOUT -> {
+                            AboutSubCategoryScreen(
                                 subCategory = route.subCategory
                             )
                         }

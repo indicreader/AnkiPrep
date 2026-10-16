@@ -57,6 +57,11 @@ enum class SettingsCategory(
         title = "File Format Guides",
         subtitle = "CSV, APKG, EPUB, and PDF parsing specs & sample formats",
         icon = Icons.Outlined.HelpOutline
+    ),
+    ABOUT(
+        title = "About & Legal",
+        subtitle = "App information, developer details, privacy policy & license",
+        icon = Icons.Outlined.Info
     )
 }
 
@@ -223,6 +228,26 @@ enum class SettingsSubCategory(
         "Format Specs & Examples",
         "Sample templates for CSV, APKG, EPUB, and PDF imports",
         Icons.Outlined.Description
+    ),
+
+    // About & Legal
+    ABOUT_US(
+        SettingsCategory.ABOUT,
+        "About AnkiPrep",
+        "Mission, developer details, version & Easter egg",
+        Icons.Outlined.Info
+    ),
+    PRIVACY_POLICY(
+        SettingsCategory.ABOUT,
+        "Privacy Policy",
+        "Offline-first commitment and zero tracking guarantee",
+        Icons.Outlined.Security
+    ),
+    LICENSE_POLICY(
+        SettingsCategory.ABOUT,
+        "License & Terms",
+        "GNU GPL v3 terms and conditions",
+        Icons.Outlined.Gavel
     )
 }
 
