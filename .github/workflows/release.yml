@@ -1,118 +1,88 @@
-name: Build & Release APK
+name: Build & Publish Release
 
 on:
   push:
     tags:
-      - 'v*'            # Trigger on version tags e.g. v5.8
+      - 'v*'
     branches:
-      - main           # Build check on main branch push
-  workflow_dispatch:    # Allow manual trigger from GitHub Actions UI
+      - main
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (leave blank to use version from app/build.gradle.kts)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
 
 jobs:
   build:
-    name: Build Signed APK & Upload to Release
+    name: Build & Release APK
     runs-on: ubuntu-latest
 
     steps:
-      # ── 1. Checkout ───────────────────────────────────────────────────────
-      - name: Checkout Source Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ── 2. JDK 17 ─────────────────────────────────────────────────────────
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
           cache: 'gradle'
 
-      # ── 3. Decode Keystore ────────────────────────────────────────────────
-      - name: Decode Keystore File
-        run: |
-          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
-            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.jks
-          else
-            echo "Notice: KEYSTORE_BASE64 not configured in secrets. Release build will use debug signing fallback."
-          fi
-
-      # ── 4. Gradle Permissions ─────────────────────────────────────────────
       - name: Grant Execute Permission to Gradlew
         run: chmod +x gradlew
 
-      # ── 5. Build Release APK ──────────────────────────────────────────────
       - name: Build Release APK
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon
 
-      # ── 6. Extract Version Name ───────────────────────────────────────────
-      - name: Determine Version & Tag
-        id: get_version
+      - name: Determine Version & Prepare Artifact
+        id: prepare_artifact
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+          if [ -f app/build/outputs/apk/release/output-metadata.json ]; then
+            VERSION=$(jq -r '.elements[0].versionName' app/build/outputs/apk/release/output-metadata.json)
+          else
+            VERSION=$(grep -E 'versionName' app/build.gradle.kts | head -1 | awk -F '"' '{print $2}')
+          fi
+
+          echo "Detected version: $VERSION"
+
+          if [ -n "${{ github.event.inputs.tag_name }}" ]; then
+            TAG="${{ github.event.inputs.tag_name }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            VER=$(grep 'versionName' app/build.gradle.kts | head -1 | sed 's/.*"\(.*\)".*/\1/')
-            TAG="v${VER}"
+            TAG="v$VERSION"
           fi
+
+          echo "Release tag: $TAG"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "Determined release tag: $TAG"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # ── 7. Locate & Rename APK ────────────────────────────────────────────
-      - name: Package & Prepare Release APK
-        id: package_apk
-        run: |
-          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
-          if [ -z "$APK" ]; then
-            echo "Error: No APK file produced in app/build/outputs/apk/release"
-            exit 1
-          fi
-          RELEASE_APK="AnkiPrep-${{ steps.get_version.outputs.tag }}.apk"
-          cp "$APK" "$RELEASE_APK"
-          echo "apk_path=$RELEASE_APK" >> $GITHUB_OUTPUT
-          echo "Prepared APK: $RELEASE_APK ($(ls -lh "$RELEASE_APK" | awk '{print $5}'))"
+          APK_SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          cp "$APK_SRC" "AnkiPrep-${TAG}.apk"
+          echo "artifact_path=AnkiPrep-${TAG}.apk" >> $GITHUB_OUTPUT
 
-      # ── 8. Upload Artifact to GitHub Action Run ───────────────────────────
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.package_apk.outputs.apk_path }}
-          path: ${{ steps.package_apk.outputs.apk_path }}
+          name: ${{ steps.prepare_artifact.outputs.artifact_path }}
+          path: ${{ steps.prepare_artifact.outputs.artifact_path }}
           retention-days: 30
 
-      # ── 9. Publish GitHub Release (Only on Tags or Manual Dispatch) ───────
-      - name: Publish to GitHub Releases
+      - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.get_version.outputs.tag }}
-          name: AnkiPrep ${{ steps.get_version.outputs.tag }}
-          body: |
-            ## AnkiPrep ${{ steps.get_version.outputs.tag }}
-
-            🚀 Production release build for Android (Minimum Android 8.0 / API 26+).
-
-            ### Highlights
-            - High-performance streaming ingestion pipeline for large CSV and JSON question files (1,000+ items).
-            - Real-time animated progress indicator with non-blocking atomic database transactions.
-            - Spaced repetition engines: FSRS (Free Spaced Repetition Scheduler), Leitner, and Traditional SRS.
-            - Offline MCQ generation from Anki `.apkg`, `.csv`, `.json`, EPUB, and PDF question banks.
-            - Full multilingual interface (English, हिन्दी, தமிழ், తెలుగు, ಕನ್ನಡ, मराठी).
-            - Modular 3-tier settings engine with customizable appearance, themes, font scales, and wake-lock controls.
-
-            ### Installation Instructions
-            1. Download the **`AnkiPrep-${{ steps.get_version.outputs.tag }}.apk`** asset attached below.
-            2. On your Android device, allow installation from your browser or file manager (**Settings → Security → Install unknown apps**).
-            3. Tap the downloaded APK to install or upgrade.
+          tag_name: ${{ steps.prepare_artifact.outputs.tag }}
+          name: "AnkiPrep ${{ steps.prepare_artifact.outputs.tag }}"
+          files: ${{ steps.prepare_artifact.outputs.artifact_path }}
+          generate_release_notes: true
           draft: false
           prerelease: false
-          files: ${{ steps.package_apk.outputs.apk_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
