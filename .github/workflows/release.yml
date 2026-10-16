@@ -37,8 +37,18 @@ jobs:
       - name: Grant Execute Permission to Gradlew
         run: chmod +x gradlew
 
+      - name: Decode Keystore
+        if: env.KEYSTORE_BASE64 != ''
+        run: echo "$KEYSTORE_BASE64" | base64 --decode > my-release-key.jks
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+
       - name: Build Release APK
         run: ./gradlew assembleRelease --no-daemon
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Determine Version & Prepare Artifact
         id: prepare_artifact
@@ -49,9 +59,6 @@ jobs:
             VERSION=$(grep -E 'versionName' app/build.gradle.kts | head -1 | awk -F '"' '{print $2}')
           fi
 
-          if [ -z "$VERSION" ]; then
-            VERSION="1.0.0"
-          fi
           echo "Detected version: $VERSION"
 
           if [ -n "${{ github.event.inputs.tag_name }}" ]; then
@@ -67,19 +74,13 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
           APK_SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
-          if [ -z "$APK_SRC" ]; then
-            echo "::error::No APK file found in app/build/outputs/apk/release!"
-            exit 1
-          fi
-
-          DEST_NAME="AnkiPrep-${TAG}.apk"
-          cp "$APK_SRC" "$DEST_NAME"
-          echo "artifact_path=$DEST_NAME" >> $GITHUB_OUTPUT
+          cp "$APK_SRC" "AnkiPrep-${TAG}.apk"
+          echo "artifact_path=AnkiPrep-${TAG}.apk" >> $GITHUB_OUTPUT
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AnkiPrep-${{ steps.prepare_artifact.outputs.tag }}-build
+          name: ${{ steps.prepare_artifact.outputs.artifact_path }}
           path: ${{ steps.prepare_artifact.outputs.artifact_path }}
           retention-days: 30
 
