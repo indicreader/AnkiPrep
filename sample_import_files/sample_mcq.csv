@@ -1,0 +1,5 @@
+"Quant, Number Systems", "What is the remainder when 2^31 is divided by 5?", "3 | 1 | 2 | 4", "Cycle of powers of 2 mod 5 is 2, 4, 3, 1 (period 4). 31 mod 4 = 3, so 2^3 = 8 = 3 mod 5."
+"Quant, Geometry", "The sum of interior angles of a regular hexagon is equal to:", "720 degrees | 540 degrees | 360 degrees | 900 degrees", "Sum of angles = (n-2)*180 = (6-2)*180 = 720 degrees."
+"English, Vocabulary", "Choose the closest synonym for the word: 'Ephemeral'", "Transitory | Eternal | Monotonous | Gigantic", "Ephemeral means lasting for a very short time; fleeting or transitory."
+"Polity, Fundamental Rights", "Which Article guarantees the Right to Constitutional Remedies?", "Article 32 | Article 21 | Article 19 | Article 14", "Dr. B.R. Ambedkar hailed Article 32 as the heart and soul of the Indian Constitution."
+"General Science, Biology", "Which cell organelle is known as the powerhouse of the cell?", "Mitochondria | Ribosome | Nucleus | Endoplasmic Reticulum", "Mitochondria produce cellular energy in the form of ATP."

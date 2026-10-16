@@ -1,92 +1,157 @@
 # AnkiPrep
 
-AnkiPrep is a premium, offline-first smart flashcard application designed for high-density exam-style multiple-choice question (MCQ) preparation. Built natively using Jetpack Compose and modern Android design principles, AnkiPrep allows users to import standard flashcard decks and practice them through an active recall framework.
+[![Build & Release APK](https://github.com/indicreader/AnkiPrep/actions/workflows/release.yml/badge.svg)](https://github.com/indicreader/AnkiPrep/actions/workflows/release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/indicreader/AnkiPrep?color=00B4D8&label=Latest%20Release)](https://github.com/indicreader/AnkiPrep/releases)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
+**AnkiPrep** is a high-performance, offline-first smart flashcard application engineered for high-density multiple-choice question (MCQ) preparation, competitive exam practice, and active recall. Built natively using **Jetpack Compose**, **Kotlin Coroutines**, and **Room Database**, AnkiPrep allows aspirants and students to import comprehensive study materials from standard flashcards (`.apkg`), spreadsheets (`.csv`), data dumps (`.json`), digital books (`.epub`), and exam papers (`.pdf`) into a structured study environment.
 
 <p align="center">
-  <img src="release/mockups/dashboard_mockup.png" width="32%" alt="Dashboard Screen" />
-  <img src="release/mockups/quiz_mockup.png" width="32%" alt="Active Recall Quiz" />
-  <img src="release/mockups/analytics_mockup.png" width="32%" alt="Analytics & Progress" />
+  <img src="release/mockups/dashboard_mockup.png" width="31%" alt="Dashboard Screen" />
+  <img src="release/mockups/quiz_mockup.png" width="31%" alt="Active Recall Quiz" />
+  <img src="release/mockups/analytics_mockup.png" width="31%" alt="Analytics & Progress" />
 </p>
 
 ---
 
-## Key Features
+## ⚡ Key Features
 
-*   🎯 **Offline MCQ Engine**: Automatically generates multiple-choice questions offline from imported Anki `.apkg` and `.csv` flashcard databases.
-*   📈 **Adaptive Spaced Repetition**: Study with adaptive learning algorithms including Leitner systems, traditional Spaced Repetition, and FSRS (Free Spaced Repetition Scheduler).
-*   🌿 **Claymorphic Spine Metaphor**: Visually tracks and displays deck mastery through a thickness and color-coded left edge spine indicator on cards.
-*   🎨 **Adaptive Color Theming**: Features a dynamic wallpaper-aware color palette system alongside custom light themes (Emerald, Ocean, Sunset) and a deep-space Cyber-Mint Dark Mode.
-*   🔤 **Dynamic Typography System**: Load and apply custom `.ttf` or `.otf` font files dynamically all over the application.
-*   🌐 **Multilingual Interface**: Fully supports localization across English, Hindi (हिन्दी), Tamil (தமிழ்), Telugu (తెలుగు), Kannada (ಕನ್ನಡ), and Marathi (मराठी).
-*   🛡️ **Privacy & Offline First**: Zero server connections or data collection. All statistics, sessions, and profile customizations remain on the local device SQLite (Room) database.
+- **🚀 High-Performance Streaming Ingestion**: Parses large files (1,000+ questions) seamlessly using streaming `BufferedReader` (for CSV) and native `JsonReader` (for JSON) on `Dispatchers.IO` with chunked atomic database transactions and real-time progress indicators.
+- **🎯 Offline MCQ Engine**: Generates multiple-choice options, distractors, and randomized order offline from source cards or semantically similar deck questions.
+- **📈 Adaptive Spaced Repetition**: Study with adaptive algorithms including **FSRS (Free Spaced Repetition Scheduler)**, 5-box Leitner progression, and traditional SRS interval scheduling.
+- **📚 Multi-Format Ingestion**: Supports `.csv`, `.json`, Anki `.apkg`, chapter-segmented `.epub` books, multi-column exam `.pdf` files, and `.zip` archives.
+- **🌿 Claymorphic Spine Metaphor**: Visually tracks and displays deck mastery via color-coded, dynamic spine depth indicators.
+- **🎨 Custom Theming & Typography**: Light palettes (Emerald, Ocean, Sunset), pure AMOLED Black mode, Cyber-Mint Dark mode, dynamic typography scaling, and custom `.ttf`/`.otf` font uploads.
+- **🌐 Multilingual Localization**: Built-in support for English, Hindi (हिन्दी), Tamil (தமிழ்), Telugu (తెలుగు), Kannada (ಕನ್ನಡ), and Marathi (मराठी).
+- **🔒 Complete Privacy & Offline Operation**: Zero data tracking or third-party cloud requirements. All learning analytics, streaks, and quiz sessions remain stored locally in SQLite/Room.
 
 ---
 
-## Getting Started
+## 📥 Sample Ingestion Files & Formats
+
+AnkiPrep supports diverse, flexible question formats out of the box. Verified sample files are included in the [`sample_import_files/`](sample_import_files/) directory:
+
+### 1. Standard Multiple-Choice CSV (`sample_import_files/sample_mcq.csv`)
+Columns: `Tags / Topic`, `Question`, `Answer | Option 1 | Option 2 | Option 3`, `Explanation`
+
+```csv
+"Quant, Number Systems", "What is the remainder when 2^31 is divided by 5?", "3 | 1 | 2 | 4", "Cycle of powers of 2 mod 5 is 2, 4, 3, 1 (period 4). 31 mod 4 = 3, so 2^3 = 8 = 3 mod 5."
+"English, Vocabulary", "Choose the closest synonym for the word: 'Ephemeral'", "Transitory | Eternal | Monotonous | Gigantic", "Ephemeral means lasting for a very short time; fleeting or transitory."
+"Polity, Fundamental Rights", "Which Article guarantees the Right to Constitutional Remedies?", "Article 32 | Article 21 | Article 19 | Article 14", "Dr. B.R. Ambedkar hailed Article 32 as the heart and soul of the Indian Constitution."
+```
+
+### 2. Five-Column Hierarchical CSV (`sample_import_files/sample_5col_history.csv`)
+Columns: `topic`, `subtopic`, `question`, `answer`, `explaination`
+
+```csv
+topic, subtopic, question, answer, explaination
+History, Ancient, Which river was known as Parushni in the Rigveda?, Ravi, Parushni is the Vedic name for modern river Ravi where the Battle of Ten Kings took place.
+History, Ancient, Capital of the Maurya Empire under Ashoka, Pataliputra, Modern day Patna served as the seat of the Mauryan emperor.
+History, Medieval, Battle of Khanwa took place in which year, 1527, Fought between the Mughal forces under Babur and the Rajput army under Rana Sanga.
+```
+
+### 3. One-Liner / Fact Sheet CSV (`sample_import_files/sample_oneliner.csv`)
+Columns: `question`, `answer`, `explaination`
+
+```csv
+question, answer, explaination
+Who wrote the National Anthem of India?, Rabindranath Tagore, Jana Gana Mana was originally composed in Bengali as Bharoto Bhagyo Bidhata.
+What is the SI unit of electric current?, Ampere, Named after Andre-Marie Ampere who discovered electro-magnetism.
+Which layer of the atmosphere contains the ozone layer?, Stratosphere, Located roughly between 15 to 35 km altitude above Earth surface.
+```
+
+### 4. Structured Question JSON (`sample_import_files/sample_questions.json`)
+Supports both top-level arrays and `{"questions": [...]}` wrapped payloads:
+
+```json
+[
+  {
+    "question": "Which gas is most abundant in the Earth's atmosphere?",
+    "options": ["Nitrogen", "Oxygen", "Argon", "Carbon Dioxide"],
+    "answer": "Nitrogen",
+    "explanation": "Nitrogen makes up roughly 78.08% of Earth's atmosphere by volume.",
+    "topic": "General Science",
+    "subtopic": "Atmosphere"
+  },
+  {
+    "question": "What is the capital city of Australia?",
+    "options": ["Canberra", "Sydney", "Melbourne", "Brisbane"],
+    "answer": "Canberra",
+    "explanation": "Canberra was chosen as the capital in 1908 as a compromise between Sydney and Melbourne.",
+    "topic": "Geography",
+    "subtopic": "World Capitals"
+  }
+]
+```
+
+### 5. Other Supported Test Assets in Repository:
+- **`sample_import_files/sample_book.epub`**: Universal EPUB structure parsed into Chapter decks and subdecks.
+- **`sample_import_files/sample_book.zip`**: Bundled ZIP containing chapters and embedded media.
+- **`sample_import_files/sample_exam.pdf`**: Multi-column past year question paper with automatic column flow detection.
+
+---
+
+## 🛠️ Project Structure
+
+```text
+AnkiPrep/
+├── .github/workflows/
+│   └── release.yml             # Automated GitHub Actions release APK builder
+├── app/
+│   ├── src/main/java/com/example/flashcardapp/
+│   │   ├── data/               # Room database, DAO, entities, and importers
+│   │   │   ├── core/           # Streaming parsers (CsvQuoteUtils, FileImportUtils)
+│   │   │   ├── CsvImporter.kt  # Streaming 250-chunk CSV parser & batch transactions
+│   │   │   └── JsonImporter.kt # Streaming JsonReader importer
+│   │   ├── mcq/                # Offline MCQ generation engine
+│   │   ├── session/            # Active recall quiz state machine
+│   │   └── ui/                 # Jetpack Compose UI (Screens, Settings, Components)
+│   │       ├── components/     # ImportProgressDialog, heatmaps, pomodoro timers
+│   │       └── settings/       # 3-tier hierarchical settings navigation
+│   └── build.gradle.kts        # Application dependencies & signing configuration
+├── sample_import_files/        # Ready-to-import sample CSV, JSON, EPUB, and PDF files
+├── build.gradle.kts            # Root project build script
+└── README.md                   # Project documentation
+```
+
+---
+
+## 🚀 Building & Releasing
 
 ### Prerequisites
+- **JDK 17** (Zulu or OpenJDK recommended)
+- **Android SDK 34+**
+- **Android Studio Ladybug** (or command line tools)
 
-*   Android Studio Ladybug (or newer)
-*   JDK 17
-*   Android SDK 34+
-
-### Build & Run
-
-To build and compile the application locally:
-
+### Build Debug Assembly Locally
 ```bash
-# Clone the repository
-git clone https://github.com/indicreader/AnkiPrep.git
-cd AnkiPrep
-
-# Build the debug assembly
 ./gradlew assembleDebug
 ```
 
-To build a clean release APK:
-
-```bash
-./build-apk.bat
+### Build Release APK Locally
+Windows batch script for clean release builds:
+```bat
+build-apk.bat
 ```
+The compiled output is saved to the `release/` directory.
 
-The compiled release binaries will be saved in the `release/` directory.
-
----
-
-## Project Directory Structure
-
-```text
-├── app/                  # Main Android Application module
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── assets/   # Embedded offline databases & mockups
-│   │   │   ├── java/     # Kotlin package source files
-│   │   │   └── res/      # Static vectors, resources, XML configuration
-│   └── build.gradle.kts  # Module configuration
-├── release/              # Compiled APK binaries & app store assets
-└── build.gradle.kts      # Project root configuration
-```
+### Automated Cloud Builds via GitHub Actions
+A complete automated build workflow is configured in [`.github/workflows/release.yml`](.github/workflows/release.yml):
+1. **Pushing a Tag**: Pushing any tag starting with `v` (e.g., `git tag v5.8 && git push origin v5.8`) triggers the workflow to compile a signed release APK and automatically create a GitHub Release with the APK attached.
+2. **Manual Dispatch**: Go to **Actions → Build & Release APK → Run workflow** on GitHub to trigger an on-demand release build.
 
 ---
 
-## How to Use AnkiPrep
+## 📲 Download & Installation
 
-1. **Import Flashcards**: Navigate to the **Library** (Review) tab and tap the float menu (`+`) to import `.apkg` or `.csv` files.
-2. **Select Decks**: Tap on any deck to view subdeck hierarchies or modify settings for that specific deck.
-3. **Customize Practice**: Go to the **Settings** tab to choose your active learning algorithm, adjust question presets (20, 30, 50, 80, or custom up to 500 questions), set time limits, or upload a custom font.
-4. **Study & Review**: Click **Study Now** to launch an active recall quiz. Incorrect answers will vibrate (optional) and show instant explanations.
-5. **Track Analytics**: Use the **Analytics** tab to view your weekly solved questions, streak charts, and custom specialty badges based on accuracy.
+Pre-compiled release binaries are available under the GitHub [Releases](https://github.com/indicreader/AnkiPrep/releases) tab.
+
+1. Download **`AnkiPrep-v*.apk`** from the latest release.
+2. Enable installation of unknown apps on your device (**Settings → Apps → Special app access → Install unknown apps**).
+3. Open the downloaded file to install.
 
 ---
 
-## Download & Availability
+## 📄 License
 
-AnkiPrep is live and available for download:
-
-<a href="https://www.indusappstore.com" target="_blank">
-  <img src="release/mockups/indus_badge.png" alt="Get it on Indus Appstore" height="55px">
-</a>
-
-*   **Indus Appstore**: Search for "AnkiPrep" within the app store.
-*   **GitHub Releases**: Download pre-compiled `.apk` packages directly from the [Releases](https://github.com/indicreader/AnkiPrep/releases) section or the `release/` directory.
-
+This project is licensed under the GNU General Public License v3.0 — see the [LICENSE](LICENSE) file for details.

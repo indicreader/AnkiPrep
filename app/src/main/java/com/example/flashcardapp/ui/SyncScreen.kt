@@ -34,6 +34,9 @@ import androidx.compose.ui.unit.sp
 import com.example.flashcardapp.data.sync.SyncState
 import com.example.flashcardapp.data.sync.WifiP2pManager
 
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Refresh
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SyncScreen(
@@ -147,7 +150,7 @@ fun SyncScreen(
                         when (val state = syncState) {
                             is SyncState.Advertising -> {
                                 Text(
-                                    text = "Share this 4-Digit PIN with the sending device to securely authenticate.",
+                                    text = "Share this 4-Digit PIN with the other device to securely authenticate.",
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
@@ -197,13 +200,161 @@ fun SyncScreen(
                                 )
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+                        if (syncState !is SyncState.Success && syncState !is SyncState.Error) {
+                            OutlinedButton(
+                                onClick = { wifiManager.stopAll() },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("Cancel / Stop Connection")
+                            }
+                        } else {
+                            val context = LocalContext.current
+                            Button(
+                                onClick = {
+                                    val isReceiveSuccess = (syncState as? SyncState.Success)?.message?.contains("mirrored", ignoreCase = true) == true
+                                    wifiManager.stopAll()
+                                    if (isReceiveSuccess) {
+                                        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                                        if (intent != null) {
+                                            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                                            context.startActivity(intent)
+                                        }
+                                        android.os.Process.killProcess(android.os.Process.myPid())
+                                        java.lang.System.exit(0)
+                                    }
+                                },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("OK")
+                            }
+                        }
                     }
                 }
             }
 
             // Tab Content
-            if (selectedTab == 0) {
-                // Send mode UI
+            if (syncState is SyncState.Idle) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "Choose Connection Method",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    if (selectedTab == 0) {
+                        // "Push Local Data" options
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { wifiManager.startDiscovery() },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Column {
+                                    Text("Scan for a Receiver", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                                    Text("Find and connect to a device waiting to receive your data.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { wifiManager.startAdvertising(sendMode = true) },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Share,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Column {
+                                    Text("Host / Advertise as Sender", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                                    Text("Start a hotspot/server and let the receiving device connect to you.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    } else {
+                        // "Pull/Receive Data" options
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { wifiManager.startAdvertising(sendMode = false) },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Share,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Column {
+                                    Text("Host / Advertise as Receiver", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                                    Text("Start a hotspot/server, display a PIN, and wait for a sender.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { wifiManager.startDiscovery() },
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Column {
+                                    Text("Scan for a Sender", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                                    Text("Find and connect to a device hosting the data.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (syncState is SyncState.Discovering || syncState is SyncState.DiscoveredPeers) {
+                // Show list of discovered devices
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -214,13 +365,13 @@ fun SyncScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Discovered Devices",
+                            text = if (selectedTab == 0) "Discovered Receivers" else "Discovered Senders",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
 
                         IconButton(onClick = { wifiManager.startDiscovery() }) {
-                            Icon(Icons.Outlined.Refresh, contentDescription = "Scan")
+                            Icon(Icons.Default.Refresh, contentDescription = "Scan")
                         }
                     }
 
@@ -233,11 +384,11 @@ fun SyncScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                                CircularProgressIndicator(color = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary)
                                 Text("Scanning local Wi-Fi subnet...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                    } else if (syncState is SyncState.DiscoveredPeers) {
+                    } else {
                         val peers = (syncState as SyncState.DiscoveredPeers).peers
                         if (peers.isEmpty()) {
                             Box(
@@ -271,52 +422,16 @@ fun SyncScreen(
                                                 Text(peer.serviceName, fontWeight = FontWeight.Bold)
                                                 Text("IP: ${peer.host?.hostAddress ?: "Resolving..."}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
-                                            Icon(Icons.Outlined.Send, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                            Icon(Icons.Outlined.Send, contentDescription = null, tint = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary)
                                         }
                                     }
                                 }
                             }
                         }
-                    } else {
-                        Box(
-                            modifier = Modifier.weight(1f).fillMaxWidth(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Button(
-                                onClick = { wifiManager.startDiscovery() },
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Outlined.Share, contentDescription = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Scan for Nearby Devices")
-                            }
-                        }
                     }
                 }
             } else {
-                // Receive mode UI
-                Box(
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (syncState is SyncState.Advertising) {
-                        Text(
-                            text = "Waiting for connecting device...",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp)
-                        )
-                    } else {
-                        Button(
-                            onClick = { wifiManager.startAdvertising(sendMode = false) },
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Outlined.Share, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Ready to Receive Data")
-                        }
-                    }
-                }
+                Spacer(modifier = Modifier.weight(1f))
             }
         }
     }
@@ -341,7 +456,7 @@ fun SyncScreen(
                 Button(
                     onClick = {
                         showPinDialog = false
-                        wifiManager.connectToPeer(targetPeer!!, pinValue, sendMode = true)
+                        wifiManager.connectToPeer(targetPeer!!, pinValue, sendMode = (selectedTab == 0))
                     },
                     enabled = pinValue.length == 4
                 ) {

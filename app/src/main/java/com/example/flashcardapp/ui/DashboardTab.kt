@@ -303,6 +303,24 @@ fun DashboardTab(
                 }
             }
 
+            Spacer(Modifier.height(16.dp))
+
+            // ── 365-Day Study Activity Heatmap ─────────────────────────────────────
+            val activityMap = remember(sessionRecords) {
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                val map = mutableMapOf<String, Int>()
+                sessionRecords.forEach { record ->
+                    val dateKey = sdf.format(java.util.Date(record.timestamp))
+                    map[dateKey] = (map[dateKey] ?: 0) + record.totalQuestions
+                }
+                map
+            }
+
+            com.example.flashcardapp.ui.components.ActivityHeatmap(
+                activityData = activityMap,
+                modifier = Modifier.fillMaxWidth()
+            )
+
             Spacer(Modifier.height(20.dp))
 
             // ── Next Session dark card ────────────────────────────────────────────
@@ -434,13 +452,18 @@ private fun DeckListCard(
             }
 
             // Right: card count
-            Text(
-                text = "$cardCount\nCards",
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = FontWeight.Medium,
-                lineHeight = 14.sp
-            )
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+            ) {
+                Text(
+                    text = "$cardCount Cards",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
         }
     }
 }

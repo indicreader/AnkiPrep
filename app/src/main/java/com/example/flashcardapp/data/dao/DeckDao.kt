@@ -17,20 +17,23 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface DeckDao {
 
-    @Query("SELECT * FROM decks ORDER BY fullPath ASC")
+    @Query("SELECT * FROM decks ORDER BY sortOrder ASC, fullPath ASC")
     fun getAllDecks(): Flow<List<DeckEntity>>
 
-    @Query("SELECT * FROM decks ORDER BY fullPath ASC")
+    @Query("SELECT * FROM decks ORDER BY sortOrder ASC, fullPath ASC")
     suspend fun getAllDecksOnce(): List<DeckEntity>
 
     @Query("SELECT * FROM decks WHERE id = :deckId")
     suspend fun getDeckById(deckId: Long): DeckEntity?
 
-    @Query("SELECT * FROM decks WHERE parentDeckId = :parentId ORDER BY name ASC")
+    @Query("SELECT * FROM decks WHERE parentDeckId = :parentId ORDER BY sortOrder ASC, name ASC")
     suspend fun getSubDecks(parentId: Long): List<DeckEntity>
 
-    @Query("SELECT * FROM decks WHERE parentDeckId IS NULL ORDER BY name ASC")
+    @Query("SELECT * FROM decks WHERE parentDeckId IS NULL ORDER BY sortOrder ASC, name ASC")
     suspend fun getRootDecks(): List<DeckEntity>
+
+    @Query("UPDATE decks SET sortOrder = :sortOrder WHERE id = :deckId")
+    suspend fun updateDeckSortOrder(deckId: Long, sortOrder: Int)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertDecks(decks: List<DeckEntity>)

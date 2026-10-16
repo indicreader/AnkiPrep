@@ -24,6 +24,15 @@ import com.example.flashcardapp.data.entities.CardUserMetadataEntity
 import com.example.flashcardapp.data.entities.DeckProgressLedger
 import com.example.flashcardapp.data.dao.DeckProgressLedgerDao
 
+import com.example.flashcardapp.data.dao.QuestionDao
+import com.example.flashcardapp.data.entities.QuestionEntity
+
+import com.example.flashcardapp.data.dao.PluginDao
+import com.example.flashcardapp.data.entities.PluginEntity
+
+import com.example.flashcardapp.data.dao.CurrentAffairsSourceDao
+import com.example.flashcardapp.data.entities.CurrentAffairsSourceEntity
+
 /**
  * Room database for caching AnkiDroid flashcard data locally.
  *
@@ -43,9 +52,12 @@ import com.example.flashcardapp.data.dao.DeckProgressLedgerDao
         CardStateEntity::class,
         AliasEntity::class,
         CardUserMetadataEntity::class,
-        DeckProgressLedger::class
+        DeckProgressLedger::class,
+        QuestionEntity::class,
+        PluginEntity::class,
+        CurrentAffairsSourceEntity::class
     ],
-    version = 12,
+    version = 16,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -60,6 +72,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun aliasDao(): AliasDao
     abstract fun cardUserMetadataDao(): CardUserMetadataDao
     abstract fun deckProgressLedgerDao(): DeckProgressLedgerDao
+    abstract fun questionDao(): QuestionDao
+    abstract fun pluginDao(): PluginDao
+    abstract fun currentAffairsSourceDao(): CurrentAffairsSourceDao
 
     companion object {
         private const val DATABASE_NAME = "ankiprep_cache.db"
@@ -166,6 +181,74 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_12_13 = object : androidx.room.migration.Migration(12, 13) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `decks` ADD COLUMN `sortOrder` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_13_14 = object : androidx.room.migration.Migration(13, 14) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `pyq_questions` (
+                        `id` TEXT NOT NULL, 
+                        `questionText` TEXT NOT NULL, 
+                        `optionA` TEXT NOT NULL, 
+                        `optionB` TEXT NOT NULL, 
+                        `optionC` TEXT NOT NULL, 
+                        `optionD` TEXT NOT NULL, 
+                        `correctAnswer` TEXT NOT NULL, 
+                        `explanation` TEXT NOT NULL, 
+                        `subject` TEXT NOT NULL, 
+                        `subTopic` TEXT NOT NULL, 
+                        `examRawTag` TEXT NOT NULL, 
+                        `examName` TEXT NOT NULL, 
+                        `examYear` INTEGER NOT NULL, 
+                        `tagsJson` TEXT NOT NULL, 
+                        `timestamp` INTEGER NOT NULL, 
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_pyq_questions_subject` ON `pyq_questions` (`subject`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_pyq_questions_subTopic` ON `pyq_questions` (`subTopic`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_pyq_questions_examYear` ON `pyq_questions` (`examYear`)")
+            }
+        }
+
+        val MIGRATION_14_15 = object : androidx.room.migration.Migration(14, 15) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `plugins` (
+                        `id` TEXT NOT NULL, 
+                        `name` TEXT NOT NULL, 
+                        `version` TEXT NOT NULL, 
+                        `author` TEXT NOT NULL, 
+                        `inputType` TEXT NOT NULL, 
+                        `description` TEXT NOT NULL, 
+                        `scriptContent` TEXT NOT NULL, 
+                        `isEnabled` INTEGER NOT NULL, 
+                        `installedAt` INTEGER NOT NULL, 
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+            }
+        }
+
+        val MIGRATION_15_16 = object : androidx.room.migration.Migration(15, 16) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `current_affairs_sources` (
+                        `id` TEXT NOT NULL, 
+                        `title` TEXT NOT NULL, 
+                        `feedUrl` TEXT NOT NULL, 
+                        `isActive` INTEGER NOT NULL, 
+                        `addedTimestamp` INTEGER NOT NULL, 
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -173,7 +256,11 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(
+                        MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, 
+                        MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14,
+                        MIGRATION_14_15, MIGRATION_15_16
+                    )
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }

@@ -22,61 +22,7 @@ const val ADMOB_BANNER_AD_UNIT_ID = "ca-app-pub-6846875306917122/8983203604"
 
 @Composable
 fun AdBanner(modifier: Modifier = Modifier, text: String = "Advertisement") {
-    val context = LocalContext.current
-    val settingsRepo = remember { com.example.flashcardapp.data.SettingsRepository.getInstance(context) }
-    var isPremium by remember { mutableStateOf(settingsRepo.isPremium) }
-
-    DisposableEffect(settingsRepo) {
-        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == "is_premium") {
-                isPremium = settingsRepo.isPremium
-            }
-        }
-        settingsRepo.registerOnSharedPreferenceChangeListener(listener)
-        onDispose {
-            settingsRepo.unregisterOnSharedPreferenceChangeListener(listener)
-        }
-    }
-
-    if (isPremium) {
-        Spacer(modifier = Modifier.height(0.dp))
-        return
-    }
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-
-    val adView = remember {
-        AdView(context).apply {
-            setAdSize(AdSize.BANNER)
-            adUnitId = ADMOB_BANNER_AD_UNIT_ID
-        }
-    }
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_RESUME -> adView.resume()
-                Lifecycle.Event.ON_PAUSE -> adView.pause()
-                Lifecycle.Event.ON_DESTROY -> adView.destroy()
-                else -> {}
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            adView.destroy()
-        }
-    }
-
-    LaunchedEffect(adView) {
-        adView.loadAd(AdRequest.Builder().build())
-    }
-
-    AndroidView(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(50.dp),
-        factory = { adView }
-    )
+    // Advertisement module disabled until app is fully functional
+    Spacer(modifier = modifier.height(0.dp))
 }
 

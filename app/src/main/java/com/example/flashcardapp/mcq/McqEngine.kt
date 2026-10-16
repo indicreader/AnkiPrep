@@ -58,14 +58,35 @@ class McqEngine(
         aliases: List<AliasEntity> = emptyList(),
         targetDeckId: Long? = null,
         targetDeckPath: String? = null,
+        targetDeckPaths: List<String>? = null,
+        targetTags: List<String>? = null,
         targetDifficulty: String? = null
     ): List<Mcq> {
+        val gson = com.google.gson.Gson()
+        val tagType = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
+
         val filteredCards = targetCards.filter { card ->
             val deckMatch = targetDeckId == null || card.deckId == targetDeckId
-            val pathMatch = targetDeckPath == null || 
-                    card.deckHierarchy == targetDeckPath || 
-                    card.deckHierarchy.startsWith("$targetDeckPath::")
-            deckMatch && pathMatch
+            val pathMatch = when {
+                !targetDeckPaths.isNullOrEmpty() -> {
+                    targetDeckPaths.any { path ->
+                        card.deckHierarchy == path || card.deckHierarchy.startsWith("$path::")
+                    }
+                }
+                targetDeckPath != null -> {
+                    card.deckHierarchy == targetDeckPath || card.deckHierarchy.startsWith("$targetDeckPath::")
+                }
+                else -> true
+            }
+            val tagMatch = if (targetTags.isNullOrEmpty()) {
+                true
+            } else {
+                val cardTagsList: List<String> = try {
+                    gson.fromJson(card.tags, tagType) ?: emptyList()
+                } catch (e: Exception) { emptyList() }
+                cardTagsList.any { cTag -> targetTags.any { tTag -> cTag.equals(tTag, ignoreCase = true) } }
+            }
+            deckMatch && pathMatch && tagMatch
         }
 
         val index = HierarchyIndex.buildAsync(allCards)
@@ -85,14 +106,18 @@ class McqEngine(
         aliases: List<AliasEntity> = emptyList(),
         targetDifficulty: String? = null
     ): Mcq? {
-        val question = card.front.trim()
+        val parsedCard = com.example.flashcardapp.data.core.StructuredParser.parseCard(card.front, card.back, card.tags)
+        val question = if (parsedCard.question.isNotBlank()) parsedCard.question else card.front.trim()
         val parsed = com.example.flashcardapp.data.core.StructuredParser.parse(card.back)
-        val correctAnswer = parsed.answer
+        val rawAnswer = if (parsedCard.answer.isNotBlank()) parsedCard.answer else parsed.answer
+        val correctAnswer = rawAnswer.replace(Regex("""\{(?:explain|explanation|explaination)\}.*""", RegexOption.IGNORE_CASE), "").trim()
 
-        val parsedTags = try {
-            val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
-            com.google.gson.Gson().fromJson<List<String>>(card.tags, type) ?: emptyList()
-        } catch (e: Exception) { emptyList() }
+        val parsedTags = if (parsedCard.tags.isNotEmpty()) parsedCard.tags else {
+            try {
+                val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
+                com.google.gson.Gson().fromJson<List<String>>(card.tags, type) ?: emptyList()
+            } catch (e: Exception) { emptyList() }
+        }
 
         if (question.isEmpty() || correctAnswer.isEmpty()) return null
 
@@ -110,7 +135,10 @@ class McqEngine(
         // If the user explicitly provided options via the standard MCQ format, use them first
         if (parsed.options.isNotEmpty()) {
             parsed.options.take(requiredDistractors).forEach { option ->
-                distractors.add(DistractorCandidate(option, -1L, DistractorSource.GLOBAL_POOL))
+                val cleanOption = option.replace(Regex("""\{(?:explain|explanation|explaination)\}.*""", RegexOption.IGNORE_CASE), "").trim()
+                if (cleanOption.isNotEmpty()) {
+                    distractors.add(DistractorCandidate(cleanOption, -1L, DistractorSource.GLOBAL_POOL))
+                }
             }
         }
         
@@ -127,8 +155,12 @@ class McqEngine(
         // Use index-tagged pairs: (text, cardId, isCorrect) to avoid text-equality ambiguity
         data class OptionMeta(val text: String, val cardId: Long, val isCorrect: Boolean)
         val optionsWithMeta = mutableListOf<OptionMeta>()
-        optionsWithMeta.add(OptionMeta(correctAnswer, card.id, true))
-        distractors.forEach { d -> optionsWithMeta.add(OptionMeta(d.text, d.sourceCardId, false)) }
+        val cleanCorrect = correctAnswer.replace(Regex("""\{(?:explain|explanation|explaination)\}.*""", RegexOption.IGNORE_CASE), "").trim()
+        optionsWithMeta.add(OptionMeta(cleanCorrect, card.id, true))
+        distractors.forEach { d ->
+            val cleanDistractor = d.text.replace(Regex("""\{(?:explain|explanation|explaination)\}.*""", RegexOption.IGNORE_CASE), "").trim()
+            optionsWithMeta.add(OptionMeta(cleanDistractor, d.sourceCardId, false))
+        }
 
         // Shuffle options deterministically
         val shuffled = optionsWithMeta.shuffled(random)
@@ -141,14 +173,23 @@ class McqEngine(
             .filterIndexed { i, _ -> i != correctIndex }
             .map { it.cardId }
             
-        val explanation = if (parsed.explanation.isNotEmpty()) {
-            parsed.explanation
+        val explanation = when {
+            parsedCard.explanation.isNotBlank() -> parsedCard.explanation.trim()
+            parsed.explanation.isNotBlank() -> parsed.explanation.trim()
+            else -> "The correct answer is: $correctAnswer"
+        }
+
+        val (displayQuestion, translationQuestion) = if (question.contains(" ||| ")) {
+            val parts = question.split(" ||| ", limit = 2)
+            parts[0].trim() to parts[1].trim()
+        } else if (parsedCard.translationQuestion != null) {
+            question to parsedCard.translationQuestion
         } else {
-            "The correct answer is: $correctAnswer"
+            question to null
         }
 
         val mcq = Mcq(
-            question = question,
+            question = displayQuestion,
             options = options,
             correctIndex = correctIndex,
             sourceCardId = card.id,
@@ -161,7 +202,10 @@ class McqEngine(
             frontImage = card.frontImage,
             backImage = card.backImage,
             explanationImage = card.explanationImage,
-            optionImagesJson = card.optionImagesJson
+            optionImagesJson = card.optionImagesJson,
+            translationQuestion = translationQuestion,
+            translationOptions = parsedCard.translationOptions,
+            translationExplanation = parsedCard.translationExplanation
         )
 
         // Final validation
@@ -366,8 +410,8 @@ class McqEngine(
 
             for (c in cardPool) {
                 if (c.id == card.id) continue
-                val parsed = com.example.flashcardapp.data.core.StructuredParser.parseCard(c.front, c.back)
-                val cText = parsed.answer.trim()
+                val parsed = com.example.flashcardapp.data.core.StructuredParser.parseCard(c.front, c.back, c.tags)
+                val cText = parsed.answer.replace(Regex("""\{(?:explain|explanation|explaination)\}.*""", RegexOption.IGNORE_CASE), "").trim()
                 
                 val candidates = mutableListOf<String>()
                 if (cText.isNotEmpty()) candidates.add(cText)
@@ -426,21 +470,59 @@ class McqEngine(
             }
         }
 
-        // LEVEL 1: Inner Tag Pool
+        // LEVEL 1: Subtopic & Topic Tag Pools
         val gson = com.google.gson.Gson()
         val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
         val targetTags: List<String> = try {
             gson.fromJson(card.tags, type) ?: emptyList()
         } catch (e: Exception) { emptyList() }
 
-        if (targetTags.isNotEmpty()) {
-            val tagMatchCards = index.allCards.filter { c ->
+        val subtopicTag = targetTags.firstOrNull { it.startsWith("subtopic:", ignoreCase = true) }
+        val topicTag = targetTags.firstOrNull { it.startsWith("topic:", ignoreCase = true) }
+
+        // LEVEL 1A: Subtopic Pool (highest priority - e.g. "medevial")
+        if (subtopicTag != null) {
+            val subtopicCards = index.allCards.filter { c ->
+                if (c.id == card.id) return@filter false
                 val cTags: List<String> = try {
                     gson.fromJson(c.tags, type) ?: emptyList()
                 } catch (e: Exception) { emptyList() }
-                cTags.any { targetTags.contains(it) }
+                cTags.any { it.equals(subtopicTag, ignoreCase = true) }
             }
-            addCandidatesFromPool(tagMatchCards, DistractorSource.SAME_DECK)
+            addCandidatesFromPool(subtopicCards, DistractorSource.SAME_DECK)
+        }
+
+        // LEVEL 1B: Topic Pool (fallback within same topic - e.g. "history")
+        if (selected.size < requiredDistractors && topicTag != null) {
+            val topicCards = index.allCards.filter { c ->
+                if (c.id == card.id) return@filter false
+                val cTags: List<String> = try {
+                    gson.fromJson(c.tags, type) ?: emptyList()
+                } catch (e: Exception) { emptyList() }
+                cTags.any { it.equals(topicTag, ignoreCase = true) }
+            }
+            addCandidatesFromPool(topicCards, DistractorSource.SAME_DECK)
+        }
+
+        // LEVEL 1C: Same Deck Sibling Pool
+        if (selected.size < requiredDistractors) {
+            val sameDeckCards = index.getByDeckId(card.deckId)
+            addCandidatesFromPool(sameDeckCards, DistractorSource.SAME_DECK)
+        }
+
+        // LEVEL 1D: Other Tag Match
+        if (selected.size < requiredDistractors && targetTags.isNotEmpty()) {
+            val otherTags = targetTags.filter { !it.startsWith("subtopic:", ignoreCase = true) && !it.startsWith("topic:", ignoreCase = true) }
+            if (otherTags.isNotEmpty()) {
+                val tagMatchCards = index.allCards.filter { c ->
+                    if (c.id == card.id) return@filter false
+                    val cTags: List<String> = try {
+                        gson.fromJson(c.tags, type) ?: emptyList()
+                    } catch (e: Exception) { emptyList() }
+                    cTags.any { otherTags.contains(it) }
+                }
+                addCandidatesFromPool(tagMatchCards, DistractorSource.SAME_DECK)
+            }
         }
 
         // LEVEL 2: Parent Deck Pool

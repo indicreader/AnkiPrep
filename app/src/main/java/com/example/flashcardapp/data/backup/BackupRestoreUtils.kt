@@ -71,7 +71,19 @@ object BackupRestoreUtils {
             AppDatabase.closeInstance()
 
             val dbDir = context.getDatabasePath("ankiprep_cache.db").parentFile ?: return false
-            if (!dbDir.exists()) {
+            if (dbDir.exists()) {
+                val dbFiles = listOf(
+                    "ankiprep_cache.db",
+                    "ankiprep_cache.db-wal",
+                    "ankiprep_cache.db-shm"
+                )
+                for (fileName in dbFiles) {
+                    val file = File(dbDir, fileName)
+                    if (file.exists()) {
+                        file.delete()
+                    }
+                }
+            } else {
                 dbDir.mkdirs()
             }
 

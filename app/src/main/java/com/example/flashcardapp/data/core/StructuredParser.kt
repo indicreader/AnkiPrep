@@ -9,7 +9,11 @@ data class ParsedCard(
     val hints: List<String> = emptyList(),
     val metadata: Map<String, String> = emptyMap(),
     val options: List<String> = emptyList(),
-    val rawContent: String
+    val rawContent: String,
+    val tags: List<String> = emptyList(),
+    val translationQuestion: String? = null,
+    val translationOptions: List<String>? = null,
+    val translationExplanation: String? = null
 )
 
 object StructuredParser {
@@ -19,7 +23,7 @@ object StructuredParser {
     fun parse(content: String?): ParsedCard {
         val raw = content ?: ""
         if (raw.isBlank()) {
-            return ParsedCard("", "", "", emptyList(), emptyMap(), emptyList(), raw)
+            return ParsedCard("", "", "", emptyList(), emptyMap(), emptyList(), raw, emptyList())
         }
 
         // Find all tags in format {tagname}
@@ -34,7 +38,8 @@ object StructuredParser {
         var options = emptyList<String>()
 
         // Split by pipe to extract answers, options, and explanation
-        val parts = answer.split("|").map { it.trim() }.filter { it.isNotEmpty() }
+        val rawParts = answer.split("|").map { it.trim() }
+        val parts = if (rawParts.all { it.isEmpty() }) emptyList() else rawParts.map { if (it.isEmpty()) "None of the above" else it }
         if (parts.size > 1) {
             answer = parts[0]
             val remainingParts = parts.drop(1).toMutableList()
@@ -55,9 +60,9 @@ object StructuredParser {
                 }
             } else {
                 // If there's no semicolon, check if the last part is actually an explanation.
-                // It is an explanation if parts.size >= 5 (standard: answer | 3 options | explanation)
-                // OR if it contains spaces and is longer than 15 chars.
-                val hasExplanation = parts.size >= 5 || (parts.size >= 3 && lastPart.contains(" ") && lastPart.length > 15)
+                // It is only treated as an inline explanation if parts.size >= 5 (standard: answer | 3 options | explanation)
+                // When parts.size is 4 (answer | 3 distractors = 4 choices), it represents the 4 choices of an MCQ.
+                val hasExplanation = parts.size >= 5
                 if (hasExplanation) {
                     explanation = lastPart
                     remainingParts.removeAt(remainingParts.size - 1)
@@ -104,14 +109,20 @@ object StructuredParser {
             }
         }
 
+        val cleanAnswer = answer.replace(Regex("""\{(?:explain|explanation|explaination)\}.*""", RegexOption.IGNORE_CASE), "").trim()
+        val cleanOptions = options.map { opt ->
+            opt.replace(Regex("""\{(?:explain|explanation|explaination)\}.*""", RegexOption.IGNORE_CASE), "").trim()
+        }.filter { it.isNotEmpty() }
+
         return ParsedCard(
             question = "",
-            answer = answer,
+            answer = cleanAnswer,
             explanation = explanation.trim(),
             hints = hints,
             metadata = metadata,
-            options = options,
-            rawContent = raw
+            options = cleanOptions,
+            rawContent = raw,
+            tags = emptyList()
         )
     }
 
@@ -145,35 +156,46 @@ object StructuredParser {
     }
 
     private fun parseOneLinerBack(back: String): Pair<String, String> {
-        val parts = splitByCommaOrColon(back)
-        if (parts.size >= 2) {
-            val lastPart = parts.last()
-            val hasExplanation = lastPart.contains(" ") || lastPart.length > 15
-            if (hasExplanation) {
-                val explanation = lastPart
-                val answer = parts.take(parts.size - 1).joinToString(", ")
-                return Pair(answer, explanation)
+        val parsed = parse(back)
+        var answer = parsed.answer.replace(Regex("""\{(?:explain|explanation|explaination)\}.*""", RegexOption.IGNORE_CASE), "").trim()
+        var explanation = parsed.explanation.trim()
+
+        if (explanation.isEmpty()) {
+            val parts = splitByCommaOrColon(answer)
+            if (parts.size >= 2) {
+                val lastPart = parts.last()
+                val hasExplanation = lastPart.contains(" ") || lastPart.length > 15
+                if (hasExplanation) {
+                    explanation = lastPart
+                    answer = parts.take(parts.size - 1).joinToString(", ")
+                }
+            } else {
+                val semicolonIndex = answer.lastIndexOf(';')
+                if (semicolonIndex != -1) {
+                    explanation = answer.substring(semicolonIndex + 1).trim()
+                    answer = answer.substring(0, semicolonIndex).trim()
+                }
             }
         }
 
-        val semicolonIndex = back.lastIndexOf(';')
-        if (semicolonIndex != -1) {
-            val answer = back.substring(0, semicolonIndex).trim()
-            val explanation = back.substring(semicolonIndex + 1).trim()
-            return Pair(answer, explanation)
-        }
-
-        return Pair(back, "")
+        answer = answer.replace(Regex("""\{(?:explain|explanation|explaination)\}.*""", RegexOption.IGNORE_CASE), "").trim()
+        return Pair(answer, explanation)
     }
 
     /**
-     * Parses a card given its front and back. Handles cases where the MCQ format is embedded
-     * in the front (e.g. "question: correct answer | option 1 | option 2 | option 3")
-     * or in the back (e.g. "correct answer | option 1 | option 2 | option 3").
+     * Parses a card given its front, back, and optional tags.
+     * Extracts questions that end with '/' or match question patterns,
+     * strips trailing '/', and enforces short comma-separated tags.
      */
-    fun parseCard(front: String, back: String): ParsedCard {
-        val cleanFront = front.trim()
+    fun parseCard(front: String, back: String, tags: String? = null): ParsedCard {
+        var cleanFront = TagQuestionUtils.normalizeExtractedQuestion(front.trim())
         val cleanBack = back.trim()
+        val (parsedTags, extractedQuestionFromTag) = TagQuestionUtils.parseAndFilterTags(tags)
+
+        // If front is empty or placeholder and tag contains a question, promote tag question
+        if ((cleanFront.isEmpty() || cleanFront.length <= 4) && extractedQuestionFromTag != null) {
+            cleanFront = extractedQuestionFromTag
+        }
 
         if (cleanFront.contains("|")) {
             val firstPipeIndex = cleanFront.indexOf('|')
@@ -184,10 +206,10 @@ object StructuredParser {
             val mcqPart: String
             if (separatorIndex != -1) {
                 questionText = cleanFront.substring(0, separatorIndex).trim()
-                mcqPart = cleanFront.substring(separatorIndex + 1).trim()
+                mcqPart = cleanFront.substring(separatorIndex + 1).removePrefix("|").trim()
             } else {
                 questionText = cleanFront.substring(0, firstPipeIndex).trim()
-                mcqPart = cleanFront.substring(firstPipeIndex).trim()
+                mcqPart = cleanFront.substring(firstPipeIndex + 1).removePrefix("|").trim()
             }
 
             val parsedMcq = parse(mcqPart)
@@ -199,24 +221,27 @@ object StructuredParser {
                 .joinToString("\n")
 
             return ParsedCard(
-                question = questionText,
+                question = TagQuestionUtils.normalizeExtractedQuestion(questionText),
                 answer = parsedMcq.answer,
                 explanation = mergedExplanation,
                 hints = (parsedMcq.hints + parsedBack.hints).distinct(),
                 metadata = parsedMcq.metadata + parsedBack.metadata,
                 options = parsedMcq.options,
-                rawContent = front + "\n" + back
+                rawContent = front + "\n" + back,
+                tags = parsedTags
             )
         } else if (cleanBack.contains("|")) {
             val parsedBack = parse(cleanBack)
+            val effectiveQuestion = if (cleanFront.isNotEmpty()) cleanFront else (extractedQuestionFromTag ?: "")
             return ParsedCard(
-                question = cleanFront,
+                question = effectiveQuestion,
                 answer = parsedBack.answer,
                 explanation = parsedBack.explanation,
                 hints = parsedBack.hints,
                 metadata = parsedBack.metadata,
                 options = parsedBack.options,
-                rawContent = front + "\n" + back
+                rawContent = front + "\n" + back,
+                tags = parsedTags
             )
         } else {
             if (cleanBack.isEmpty() && (cleanFront.contains(",") || cleanFront.contains(":"))) {
@@ -238,21 +263,25 @@ object StructuredParser {
                     }
 
                     return ParsedCard(
-                        question = qText.trim(),
+                        question = TagQuestionUtils.normalizeExtractedQuestion(qText.trim()),
                         answer = aText.trim(),
                         explanation = eText.trim(),
-                        rawContent = front
+                        rawContent = front,
+                        tags = parsedTags
                     )
                 }
             }
 
             val parsedBack = parseOneLinerBack(cleanBack)
+            val effectiveQuestion = if (cleanFront.isNotEmpty()) cleanFront else (extractedQuestionFromTag ?: "")
             return ParsedCard(
-                question = cleanFront,
+                question = effectiveQuestion,
                 answer = parsedBack.first,
                 explanation = parsedBack.second,
-                rawContent = front + "\n" + back
+                rawContent = front + "\n" + back,
+                tags = parsedTags
             )
         }
     }
 }
+

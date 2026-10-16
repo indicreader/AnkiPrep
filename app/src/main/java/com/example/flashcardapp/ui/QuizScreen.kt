@@ -110,6 +110,15 @@ fun QuizScreen(
     var toolbarOffset by remember { mutableStateOf(Offset.Zero) }
 
     val settingsRepo = remember { com.example.flashcardapp.data.SettingsRepository.getInstance(context) }
+    val activity = context as? android.app.Activity
+    DisposableEffect(settingsRepo.keepScreenAwakeDuringQuiz) {
+        if (settingsRepo.keepScreenAwakeDuringQuiz) {
+            activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
     val defaultPenColorStr = remember { settingsRepo.whiteboardDefaultPenColor }
     val autoStylusMode = remember { settingsRepo.whiteboardAutoStylusMode }
     val highlighterAlpha = remember { settingsRepo.whiteboardHighlighterAlpha }
@@ -131,6 +140,8 @@ fun QuizScreen(
             "TOGGLE" -> isWhiteBoardActive = !isWhiteBoardActive
         }
     }
+
+    var isQuestionTranslated by remember { mutableStateOf(false) }
 
     val initialPenColor = remember(defaultPenColorStr, isDarkMode) {
         when (defaultPenColorStr) {
@@ -170,8 +181,8 @@ fun QuizScreen(
 
         val selectedPackCard = cardToEditFromPack
         if (selectedPackCard != null) {
-            val parsed = remember(selectedPackCard.front, selectedPackCard.back) {
-                com.example.flashcardapp.data.core.StructuredParser.parseCard(selectedPackCard.front, selectedPackCard.back)
+            val parsed = remember(selectedPackCard.front, selectedPackCard.back, selectedPackCard.tags) {
+                com.example.flashcardapp.data.core.StructuredParser.parseCard(selectedPackCard.front, selectedPackCard.back, selectedPackCard.tags)
             }
             val initialTags = remember(selectedPackCard.tags) {
                 repo.parseTags(selectedPackCard.tags).joinToString(", ")
@@ -239,7 +250,9 @@ fun QuizScreen(
         } else {
             userRating = 0
         }
-        whiteboardStrokes.clear()
+        if (settingsRepo.whiteboardAutoClearOnNext) {
+            whiteboardStrokes.clear()
+        }
     }
     if (isLoading) {
         // Skeleton Loading Screen
@@ -298,6 +311,42 @@ fun QuizScreen(
 
     val currentSelection = sessionState.getSelectionForIndex(sessionState.currentQuestionIndex)
     val isQuestionAnswered = sessionState.isQuestionAnswered(sessionState.currentQuestionIndex)
+
+    val hasTranslation = remember(currentQuestion) {
+        !currentQuestion.translationQuestion.isNullOrBlank() ||
+        currentQuestion.question.contains(" ||| ") ||
+        !currentQuestion.translationExplanation.isNullOrBlank()
+    }
+
+    val rawQuestionToDisplay = if (isQuestionTranslated) {
+        if (!currentQuestion.translationQuestion.isNullOrBlank()) {
+            currentQuestion.translationQuestion
+        } else if (currentQuestion.question.contains(" ||| ")) {
+            val parts = currentQuestion.question.split(" ||| ", limit = 2)
+            if (parts.size > 1) parts[1].trim() else parts[0].trim()
+        } else {
+            currentQuestion.question
+        }
+    } else {
+        if (currentQuestion.question.contains(" ||| ")) {
+            val parts = currentQuestion.question.split(" ||| ", limit = 2)
+            parts[0].trim()
+        } else {
+            currentQuestion.question
+        }
+    }
+
+    val displayOptions = if (isQuestionTranslated && !currentQuestion.translationOptions.isNullOrEmpty()) {
+        currentQuestion.translationOptions
+    } else {
+        currentQuestion.options
+    }
+
+    val explanationToDisplay = if (isQuestionTranslated && !currentQuestion.translationExplanation.isNullOrBlank()) {
+        currentQuestion.translationExplanation
+    } else {
+        currentQuestion.explanation
+    }
 
     // ── Per-question timer ────────────────────────────────────
     var questionTimeMs by remember(sessionState.currentQuestionIndex) { mutableStateOf(0L) }
@@ -463,6 +512,17 @@ fun QuizScreen(
                             )
                         }
 
+                        // Mid-test Translate icon button
+                        if (hasTranslation) {
+                            IconButton(onClick = { isQuestionTranslated = !isQuestionTranslated }) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Translate,
+                                    contentDescription = "Toggle Translation",
+                                    tint = if (isQuestionTranslated) colorScheme.primary else colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
                         // Timer pill
                         if (timeLimitSeconds > 0 && !isQuestionAnswered) {
                             TimerChip(remainingSecs = remainingSecs, isUrgent = isUrgent)
@@ -508,9 +568,6 @@ fun QuizScreen(
                         .padding(horizontal = 20.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    if (sessionState.mode != McqSessionMode.PRACTICE) {
-                        AdBanner(modifier = Modifier.fillMaxWidth(), text = "Quiz Ad")
-                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -557,7 +614,7 @@ fun QuizScreen(
                         }
                     }
 
-                    if (sessionState.mode != com.example.flashcardapp.session.McqSessionMode.TEST && isQuestionAnswered && currentQuestion.explanation.isNotEmpty()) {
+                    if (sessionState.mode != com.example.flashcardapp.session.McqSessionMode.TEST && isQuestionAnswered && explanationToDisplay.isNotEmpty()) {
                         Button(
                             onClick = { /* scroll to explanation */ },
                             modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -645,71 +702,222 @@ fun QuizScreen(
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // ── Question text and Tags ──
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = currentQuestion.question,
-                            style = MaterialTheme.typography.headlineSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                lineHeight = 34.sp
-                            ),
-                            color = colorScheme.onBackground
-                        )
-
-                        if (currentQuestion.tags.isNotEmpty()) {
+                    // ── Active Tag Filter Banner ──
+                    if (!sessionState.activeTagFilter.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = colorScheme.primaryContainer,
+                            border = BorderStroke(1.dp, colorScheme.primary),
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        ) {
                             Row(
-                                horizontalArrangement = Arrangement.End,
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
-                                currentQuestion.tags.forEach { tag ->
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                        border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                                        modifier = Modifier.padding(start = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = tag,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
+                                Icon(
+                                    Icons.Outlined.FilterList,
+                                    contentDescription = null,
+                                    tint = colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Tag: #${sessionState.activeTagFilter}",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = colorScheme.onPrimaryContainer
+                                )
+                                IconButton(
+                                    onClick = { sessionManager.filterByTag(null) },
+                                    modifier = Modifier.size(18.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Clear tag filter",
+                                        tint = colorScheme.primary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
                                 }
                             }
                         }
                     }
 
-                    // ── Dynamic UI Media Sandbox Canvas ──
-                    if (currentQuestion.frontImage != null) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 250.dp),
-                            contentAlignment = Alignment.Center
+                    // ── Question Card Container ──
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ),
+                        border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.6f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            AsyncImage(
-                                model = ImageStorageManager.getFullFile(context, currentQuestion.frontImage),
-                                contentDescription = "Card Media",
-                                modifier = Modifier.fillMaxWidth().heightIn(max = 250.dp),
-                                contentScale = ContentScale.Inside
+                            // Top Row: Question number and top-right Translate toggle
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Question ${sessionState.currentQuestionIndex + 1}/${sessionState.questions.size}",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = colorScheme.primary
+                                )
+
+                                if (hasTranslation) {
+                                    Surface(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = if (isQuestionTranslated) colorScheme.primary else colorScheme.primaryContainer.copy(alpha = 0.7f),
+                                        border = BorderStroke(1.dp, if (isQuestionTranslated) colorScheme.primary else colorScheme.outline.copy(alpha = 0.4f)),
+                                        modifier = Modifier.clickable {
+                                            isQuestionTranslated = !isQuestionTranslated
+                                        }
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Outlined.Translate,
+                                                contentDescription = "Translate question",
+                                                tint = if (isQuestionTranslated) colorScheme.onPrimary else colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = if (isQuestionTranslated) "Original" else "हिन्दी / Translate",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = if (isQuestionTranslated) colorScheme.onPrimary else colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            val cleanQuestionText = remember(rawQuestionToDisplay) {
+                                val unstripped = ImageStorageManager.cleanImageTagsFromText(rawQuestionToDisplay)
+                                if (unstripped.contains("|") && !unstripped.contains(" ||| ")) {
+                                    val parts = unstripped.split("|").map { it.trim() }
+                                    parts.lastOrNull { it.length > 15 || it.endsWith("?") }
+                                        ?: parts.firstOrNull { it.isNotEmpty() }
+                                        ?: unstripped
+                                } else {
+                                    unstripped
+                                }
+                            }
+                            Text(
+                                text = cleanQuestionText,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    lineHeight = 28.sp
+                                ),
+                                color = colorScheme.onSurface
                             )
+
+                            if (currentQuestion.tags.isNotEmpty()) {
+                                Row(
+                                    horizontalArrangement = Arrangement.Start,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Tags: ",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                        modifier = Modifier.padding(end = 4.dp)
+                                    )
+                                    currentQuestion.tags.forEach { tag ->
+                                        val isTagActive = sessionState.activeTagFilter.equals(tag, ignoreCase = true)
+                                        Surface(
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isTagActive) colorScheme.primary else colorScheme.surface.copy(alpha = 0.8f),
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (isTagActive) colorScheme.primary else colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                            ),
+                                            modifier = Modifier
+                                                .padding(end = 6.dp)
+                                                .clickable {
+                                                    if (isTagActive) sessionManager.filterByTag(null)
+                                                    else sessionManager.filterByTag(tag)
+                                                }
+                                        ) {
+                                            Text(
+                                                text = "#$tag",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = if (isTagActive) FontWeight.Bold else FontWeight.Normal
+                                                ),
+                                                color = if (isTagActive) colorScheme.onPrimary else colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            val questionImages = remember(currentQuestion.frontImage, currentQuestion.question) {
+                                val list = mutableListOf<String>()
+                                currentQuestion.frontImage?.let { if (it.isNotBlank()) list.add(it) }
+                                val embedded = ImageStorageManager.extractEmbeddedImageSources(currentQuestion.question)
+                                embedded.forEach { if (it !in list) list.add(it) }
+                                list
+                            }
+
+                            questionImages.forEach { imgPath ->
+                                val resolvedModel = ImageStorageManager.resolveImageModel(context, imgPath)
+                                if (resolvedModel != null) {
+                                    AsyncImage(
+                                        model = resolvedModel,
+                                        contentDescription = "Question Media",
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 6.dp)
+                                            .heightIn(max = 280.dp)
+                                            .clip(RoundedCornerShape(12.dp)),
+                                        contentScale = ContentScale.Fit
+                                    )
+                                }
+                            }
                         }
                     }
 
                     // ── Answer option cards ───────────────────
                     val optionLabels = listOf("A", "B", "C", "D", "E", "F")
-                    currentQuestion.options.forEachIndexed { idx, option ->
+                    val optionImages = remember(currentQuestion.optionImagesJson) {
+                        if (currentQuestion.optionImagesJson.isNullOrBlank()) emptyList<String>()
+                        else {
+                            try {
+                                com.google.gson.Gson().fromJson<List<String>>(
+                                    currentQuestion.optionImagesJson,
+                                    object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
+                                ) ?: emptyList<String>()
+                            } catch (_: Exception) {
+                                emptyList<String>()
+                            }
+                        }
+                    }
+
+                    displayOptions.forEachIndexed { idx, option ->
                         val isSelected = currentSelection == idx
                         val isCorrectChoice = idx == currentQuestion.correctIndex
                         val showFeedback = sessionState.mode != McqSessionMode.TEST && isQuestionAnswered
 
+                        var imageUrl = optionImages.getOrNull(idx)
+                        if (imageUrl.isNullOrBlank()) {
+                            val embedded = ImageStorageManager.extractEmbeddedImageSources(option)
+                            if (embedded.isNotEmpty()) {
+                                imageUrl = embedded.first()
+                            }
+                        }
+
                         QuizOptionCard(
                             label = optionLabels.getOrElse(idx) { (idx + 1).toString() },
                             text = option,
+                            imageUrl = imageUrl,
                             isSelected = isSelected,
                             isCorrect = showFeedback && isCorrectChoice,
                             isWrong = showFeedback && isSelected && !isCorrectChoice,
@@ -767,7 +975,7 @@ fun QuizScreen(
                     val showExplanation = showExplanations
                         && sessionState.mode != McqSessionMode.TEST
                         && isQuestionAnswered
-                        && currentQuestion.explanation.isNotEmpty()
+                        && explanationToDisplay.isNotEmpty()
 
                     AnimatedVisibility(
                         visible = showExplanation,
@@ -790,33 +998,57 @@ fun QuizScreen(
                                     tint = colorScheme.tertiary,
                                     modifier = Modifier.size(20.dp).padding(top = 2.dp)
                                 )
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text(
                                         text = TranslationManager.getString("explanation"),
                                         style = MaterialTheme.typography.labelLarge,
                                         color = colorScheme.onTertiaryContainer
                                     )
-                                    Text(
-                                        text = currentQuestion.explanation,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
-                                        lineHeight = 20.sp
-                                    )
-                                    if (currentQuestion.backImage != null) {
-                                        AsyncImage(
-                                            model = ImageStorageManager.getFullFile(context, currentQuestion.backImage),
-                                            contentDescription = "Back Image",
-                                            modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).padding(top = 8.dp),
-                                            contentScale = ContentScale.Inside
+                                    
+                                    val cleanExplanation = remember(explanationToDisplay) {
+                                        ImageStorageManager.cleanImageTagsFromText(explanationToDisplay)
+                                    }
+                                    if (cleanExplanation.isNotEmpty()) {
+                                        Text(
+                                            text = cleanExplanation,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
+                                            lineHeight = 20.sp
                                         )
                                     }
-                                    if (currentQuestion.explanationImage != null) {
-                                        AsyncImage(
-                                            model = ImageStorageManager.getFullFile(context, currentQuestion.explanationImage),
-                                            contentDescription = "Explanation Image",
-                                            modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).padding(top = 8.dp),
-                                            contentScale = ContentScale.Inside
-                                        )
+
+                                    val explanationImages = remember(
+                                        currentQuestion.backImage,
+                                        currentQuestion.explanationImage,
+                                        currentQuestion.explanation
+                                    ) {
+                                        val list = mutableListOf<String>()
+                                        currentQuestion.backImage?.let { if (it.isNotBlank()) list.add(it) }
+                                        currentQuestion.explanationImage?.let { if (it.isNotBlank() && it !in list) list.add(it) }
+                                        val embedded = ImageStorageManager.extractEmbeddedImageSources(currentQuestion.explanation)
+                                        embedded.forEach { if (it !in list) list.add(it) }
+                                        list
+                                    }
+
+                                    explanationImages.forEach { imgPath ->
+                                        val resolvedModel = ImageStorageManager.resolveImageModel(context, imgPath)
+                                        if (resolvedModel != null) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 6.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(colorScheme.surface.copy(alpha = 0.5f)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                AsyncImage(
+                                                    model = resolvedModel,
+                                                    contentDescription = "Full Explanation Image",
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    contentScale = ContentScale.FillWidth
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -871,7 +1103,7 @@ fun QuizScreen(
                                 optionImagesOverrideJson = optImgs
                             )
                         )
-                        val parsed = com.example.flashcardapp.data.core.StructuredParser.parseCard(newFront, newBack)
+                        val parsed = com.example.flashcardapp.data.core.StructuredParser.parseCard(newFront, newBack, newTags)
                         val parsedTagsList = repo.parseTags(newTags)
                         val newCorrectAnswer = parsed.answer.ifEmpty { newBack.substringBefore("|").substringBefore(";").trim() }
                         val newOptions = currentQuestion.options.toMutableList()
@@ -1348,6 +1580,7 @@ fun QuizScreen(
 private fun QuizOptionCard(
     label: String,
     text: String,
+    imageUrl: String? = null,
     isSelected: Boolean,
     isCorrect: Boolean,
     isWrong: Boolean,
@@ -1356,6 +1589,7 @@ private fun QuizOptionCard(
     vibrationEnabled: Boolean
 ) {
     val colorScheme = MaterialTheme.colorScheme
+    val context = LocalContext.current
     val hapticFeedback = LocalHapticFeedback.current
 
     // Animated scale for press feedback
@@ -1388,12 +1622,6 @@ private fun QuizOptionCard(
         isSelected -> colorScheme.primary
         else -> colorScheme.surfaceVariant
     }
-    val badgeText = when {
-        isCorrect -> CorrectColor.copy(alpha = 0f) // icon replaces label
-        isWrong -> IncorrectColor.copy(alpha = 0f)
-        isSelected -> colorScheme.onPrimary
-        else -> colorScheme.onSurfaceVariant
-    }
 
     Card(
         modifier = Modifier
@@ -1414,46 +1642,75 @@ private fun QuizOptionCard(
         border = BorderStroke(borderWidth, borderColor),
         elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected || isCorrect || isWrong) 0.dp else 2.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .defaultMinSize(minHeight = 64.dp)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Letter badge — rounded square (matches mockup)
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(badgeBg),
-                contentAlignment = Alignment.Center
-            ) {
-                when {
-                    isCorrect -> Icon(Icons.Outlined.CheckCircle, contentDescription = "Correct", tint = Color.White, modifier = Modifier.size(20.dp))
-                    isWrong -> Icon(Icons.Outlined.Close, contentDescription = "Incorrect", tint = Color.White, modifier = Modifier.size(20.dp))
-                    else -> Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (isSelected) colorScheme.onPrimary else colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Bold
-                    )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Render Option Banner if imageUrl is present
+            if (!imageUrl.isNullOrBlank()) {
+                val resolvedModel = remember(imageUrl) { ImageStorageManager.resolveImageModel(context, imageUrl) }
+                if (resolvedModel != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(110.dp)
+                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    ) {
+                        AsyncImage(
+                            model = resolvedModel,
+                            contentDescription = "Option Banner Image",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(110.dp),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
                 }
             }
 
-            // Option text
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodyLarge,
-                color = when {
-                    isCorrect -> CorrectColor
-                    isWrong -> IncorrectColor
-                    isSelected -> colorScheme.onPrimaryContainer
-                    else -> colorScheme.onSurface
-                },
-                modifier = Modifier.weight(1f)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 56.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Letter badge — rounded square (matches mockup)
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(badgeBg),
+                    contentAlignment = Alignment.Center
+                ) {
+                    when {
+                        isCorrect -> Icon(Icons.Outlined.CheckCircle, contentDescription = "Correct", tint = Color.White, modifier = Modifier.size(20.dp))
+                        isWrong -> Icon(Icons.Outlined.Close, contentDescription = "Incorrect", tint = Color.White, modifier = Modifier.size(20.dp))
+                        else -> Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (isSelected) colorScheme.onPrimary else colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Clean option text (strip embedded HTML/Markdown tags)
+                val cleanOptionText = remember(text) { ImageStorageManager.cleanImageTagsFromText(text) }
+                val displayText = cleanOptionText.ifEmpty {
+                    if (!imageUrl.isNullOrBlank()) "Option Image" else text
+                }
+
+                Text(
+                    text = displayText,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = when {
+                        isCorrect -> CorrectColor
+                        isWrong -> IncorrectColor
+                        isSelected -> colorScheme.onPrimaryContainer
+                        else -> colorScheme.onSurface
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }
@@ -1655,15 +1912,17 @@ fun EditWholePackScreen(
             cards
         } else {
             cards.filter { card ->
-                val parsed = com.example.flashcardapp.data.core.StructuredParser.parseCard(card.front, card.back)
+                val parsed = com.example.flashcardapp.data.core.StructuredParser.parseCard(card.front, card.back, card.tags)
                 val question = parsed.question.ifEmpty { card.front }
                 val answer = parsed.answer
                 val explanation = parsed.explanation
-                val tags = try {
-                    val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
-                    com.google.gson.Gson().fromJson<List<String>>(card.tags, type) ?: emptyList()
-                } catch (_: Exception) {
-                    emptyList()
+                val tags = if (parsed.tags.isNotEmpty()) parsed.tags else {
+                    try {
+                        val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
+                        com.google.gson.Gson().fromJson<List<String>>(card.tags, type) ?: emptyList()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
                 }
 
                 question.contains(searchQuery, ignoreCase = true) ||
@@ -1778,8 +2037,8 @@ fun EditWholePackScreen(
                     }
                 } else {
                     filteredCards.forEachIndexed { index, card ->
-                        val parsed = remember(card.front, card.back) {
-                            com.example.flashcardapp.data.core.StructuredParser.parseCard(card.front, card.back)
+                        val parsed = remember(card.front, card.back, card.tags) {
+                            com.example.flashcardapp.data.core.StructuredParser.parseCard(card.front, card.back, card.tags)
                         }
                         val questionDisplay = parsed.question.ifEmpty { card.front.trim() }
                         val answerDisplay = parsed.answer

@@ -147,4 +147,27 @@ class StructuredParserTest {
         assertEquals("Mercury", parsed.answer)
         assertEquals("", parsed.explanation)
     }
+
+    @Test
+    fun `test parseCard with explain tag in back strips explain from answer and options`() {
+        val front = "What was the range of mesolithic period between?"
+        val back = "10,000 to 6000 bce {explain} Mesolithic was a transitional stone age period"
+        val parsed = StructuredParser.parseCard(front, back)
+
+        assertEquals("What was the range of mesolithic period between?", parsed.question)
+        assertEquals("10,000 to 6000 bce", parsed.answer)
+        assertEquals("Mesolithic was a transitional stone age period", parsed.explanation)
+        assertTrue(parsed.options.all { !it.contains("{explain}") })
+    }
+
+    @Test
+    fun `test parseCard with explain tag in pipe options strips explain`() {
+        val front = "What is capital of France?"
+        val back = "Paris | London | Berlin {explain} Western European capitals | Rome"
+        val parsed = StructuredParser.parseCard(front, back)
+
+        assertEquals("Paris", parsed.answer)
+        assertTrue(parsed.options.none { it.contains("{explain}") })
+        assertTrue(!parsed.answer.contains("{explain}"))
+    }
 }

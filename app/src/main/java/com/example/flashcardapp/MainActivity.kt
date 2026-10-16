@@ -44,14 +44,18 @@ import com.example.flashcardapp.session.McqSessionMode
 import com.example.flashcardapp.session.McqSessionState
 import com.example.flashcardapp.session.WeakCardSelector
 import com.example.flashcardapp.data.entities.CardEntity
+import com.example.flashcardapp.ui.components.ImportProgressDialog
 import com.example.flashcardapp.ui.DeckSelectionScreen
 import com.example.flashcardapp.ui.ImportDeckDialog
+import com.example.flashcardapp.ui.PdfSegmentConfigDialog
 import com.example.flashcardapp.ui.CsvMappingDialog
 import com.example.flashcardapp.ui.QuizScreen
 import com.example.flashcardapp.ui.ResultsScreen
 import com.example.flashcardapp.ui.ReviewMistakesScreen
 import com.example.flashcardapp.ui.SettingsScreen
 import com.example.flashcardapp.ui.ProfileScreen
+import com.example.flashcardapp.ui.PluginManagementScreen
+import com.example.flashcardapp.data.plugin.PluginRepository
 import com.example.flashcardapp.ui.theme.AnkiQuizTheme
 import com.example.flashcardapp.ui.theme.PrimaryPurple
 import com.example.flashcardapp.ui.theme.TextPrimaryDeep
@@ -82,12 +86,16 @@ import com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAdLoa
 sealed class Screen {
     object DeckSelection : Screen()
     object Settings : Screen()
+    object Plugins : Screen()
+    object CurrentAffairs : Screen()
     object Profile : Screen()
     object AliasEditor : Screen()
     data class Quiz(
         val deck: AnkiDeck,
         val mode: McqSessionMode,
         val customDeckIds: List<Long>? = null,
+        val customDeckPaths: List<String>? = null,
+        val customTags: List<String>? = null,
         val isStarredOnly: Boolean = false,
         val sessionKey: Long = System.currentTimeMillis()
     ) : Screen()
@@ -103,6 +111,10 @@ sealed class Screen {
     data class ReviewMistakes(
         val deck: AnkiDeck,
         val answeredQuestions: List<AnswerRecord>
+    ) : Screen()
+    data class MockExam(
+        val deck: AnkiDeck,
+        val preset: com.example.flashcardapp.mock.ExamPreset
     ) : Screen()
 }
 
@@ -172,9 +184,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        MobileAds.initialize(this) {
-            loadInterstitialAd()
-        }
+        // Ad module disabled until app is fully functional
+        // MobileAds.initialize(this) { loadInterstitialAd() }
         handleIntent(intent)
         setContent {
             val context = LocalContext.current
@@ -183,7 +194,28 @@ class MainActivity : ComponentActivity() {
             var themePreset by remember { mutableStateOf(settingsRepo.themePreset) }
             var useDynamicWallpaper by remember { mutableStateOf(settingsRepo.useDynamicWallpaperTheme) }
             var isDarkMode by remember { mutableStateOf(settingsRepo.isDarkMode) }
+            var useOledBlack by remember { mutableStateOf(settingsRepo.useOledBlack) }
+            var fontScaleFactor by remember { mutableStateOf(settingsRepo.fontScaleFactor) }
             var fontFamilyType by remember { mutableStateOf(settingsRepo.fontFamilyType) }
+            var customPrimaryColor by remember { mutableStateOf(settingsRepo.customPrimaryColor) }
+            var customAccentColor by remember { mutableStateOf(settingsRepo.customAccentColor) }
+            var morphismElevationFactor by remember { mutableStateOf(settingsRepo.morphismElevationFactor) }
+
+            DisposableEffect(settingsRepo) {
+                val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                    when (key) {
+                        "custom_primary_color" -> customPrimaryColor = settingsRepo.customPrimaryColor
+                        "custom_accent_color" -> customAccentColor = settingsRepo.customAccentColor
+                        "morphism_elevation_factor" -> morphismElevationFactor = settingsRepo.morphismElevationFactor
+                        "theme_preset" -> themePreset = settingsRepo.themePreset
+                        "use_dynamic_wallpaper_theme" -> useDynamicWallpaper = settingsRepo.useDynamicWallpaperTheme
+                    }
+                }
+                settingsRepo.registerOnSharedPreferenceChangeListener(listener)
+                onDispose {
+                    settingsRepo.unregisterOnSharedPreferenceChangeListener(listener)
+                }
+            }
 
             // Restore saved language on every app launch
             remember(settingsRepo.appLanguage) {
@@ -194,19 +226,39 @@ class MainActivity : ComponentActivity() {
                 AnkiQuizTheme(
                     themePreset = themePreset,
                     isDarkMode = isDarkMode,
+                    useOledBlack = useOledBlack,
+                    fontScaleFactor = fontScaleFactor,
                     useDynamicWallpaper = useDynamicWallpaper,
-                    fontFamilyType = fontFamilyType
+                    fontFamilyType = fontFamilyType,
+                    customPrimaryColor = customPrimaryColor,
+                    customAccentColor = customAccentColor,
+                    morphismElevationFactor = morphismElevationFactor
                 ) {
                     MainLayout(
                         themePreset = themePreset,
                         onThemePresetChange = {
                             themePreset = it
                             settingsRepo.themePreset = it
+                            // Selecting a morphism preset automatically turns off dynamic wallpaper override so preset applies instantly
+                            if (useDynamicWallpaper) {
+                                useDynamicWallpaper = false
+                                settingsRepo.useDynamicWallpaperTheme = false
+                            }
                         },
                         isDarkMode = isDarkMode,
                         onDarkModeToggle = {
                             isDarkMode = it
                             settingsRepo.isDarkMode = it
+                        },
+                        useOledBlack = useOledBlack,
+                        onUseOledBlackToggle = {
+                            useOledBlack = it
+                            settingsRepo.useOledBlack = it
+                        },
+                        fontScaleFactor = fontScaleFactor,
+                        onFontScaleFactorChange = {
+                            fontScaleFactor = it
+                            settingsRepo.fontScaleFactor = it
                         },
                         useDynamicWallpaper = useDynamicWallpaper,
                         onUseDynamicWallpaperToggle = {
@@ -619,6 +671,10 @@ fun MainLayout(
     onThemePresetChange: (String) -> Unit,
     isDarkMode: Boolean,
     onDarkModeToggle: (Boolean) -> Unit,
+    useOledBlack: Boolean = false,
+    onUseOledBlackToggle: (Boolean) -> Unit = {},
+    fontScaleFactor: Float = 1.0f,
+    onFontScaleFactorChange: (Float) -> Unit = {},
     useDynamicWallpaper: Boolean,
     onUseDynamicWallpaperToggle: (Boolean) -> Unit,
     fontFamilyType: String,
@@ -634,6 +690,9 @@ fun MainLayout(
         .collectAsState(initial = emptyList())
 
     val settingsRepo = remember { SettingsRepository.getInstance(context) }
+    val pluginRepository = remember {
+        PluginRepository(com.example.flashcardapp.data.AppDatabase.getInstance(context).pluginDao())
+    }
     var isPremium by remember { mutableStateOf(settingsRepo.isPremium) }
     DisposableEffect(settingsRepo) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -653,9 +712,9 @@ fun MainLayout(
         val orderMap = customOrder.withIndex().associate { it.value to it.index }
         cachedDecks
             .sortedWith { d1, d2 ->
-                val pos1 = orderMap[d1.id] ?: Int.MAX_VALUE
-                val pos2 = orderMap[d2.id] ?: Int.MAX_VALUE
-                if (pos1 != pos2) pos1.compareTo(pos2) else d1.name.compareTo(d2.name)
+                val pos1 = orderMap[d1.id] ?: (100000 + d1.sortOrder)
+                val pos2 = orderMap[d2.id] ?: (100000 + d2.sortOrder)
+                if (pos1 != pos2) pos1.compareTo(pos2) else d1.fullPath.compareTo(d2.fullPath)
             }
             .map { AnkiDeck(it.id, it.fullPath, it.cardCount) }
     }
@@ -723,12 +782,19 @@ fun MainLayout(
         // Yield compositor so the first frame paints before any heavy work
         kotlinx.coroutines.yield()
 
+        // Schedule periodic Daily Current Affairs background sync worker (24-hour cycle)
+        com.example.flashcardapp.data.ca.DailyCurrentAffairsWorker.schedulePeriodicSync(context)
+
         // Load Room stats (fast read from already-open DB) — safe after yield
         reloadDbStats()
 
         coroutineScope.launch(Dispatchers.IO) {
             try {
                 repo.loadDefaultAliasesIfNeeded()
+                val normalizedCards = repo.normalizeExistingCardsAndTags()
+                if (normalizedCards > 0) {
+                    Log.d("MainActivity", "Successfully normalized $normalizedCards existing cards across decks.")
+                }
                 Log.d("MainActivity", "Background sync + diagnostics starting…")
                 val isCachePopulated = repo.isCachePopulated()
                 val shouldSync = !isCachePopulated && hasPermission
@@ -808,34 +874,62 @@ fun MainLayout(
         }
     }
 
-     // Unified import states for CSV, APKG, and EPUB
+     // Unified import states for CSV, JSON, APKG, and EPUB
      var pendingImportUri by remember { mutableStateOf<android.net.Uri?>(null) }
-     var pendingImportType by remember { mutableStateOf<String?>(null) } // "CSV", "APKG", or "EPUB"
-      var showImportDialog by remember { mutableStateOf(false) }
-      var showMappingDialog by remember { mutableStateOf(false) }
-      var mappingTargetDeckId by remember { mutableStateOf<Long?>(null) }
-      var mappingTargetDeckName by remember { mutableStateOf<String?>(null) }
-      var mappingCustomName by remember { mutableStateOf("") }
-      var mappingDuplicateStrategy by remember { mutableStateOf("UPDATE") }
+     var pendingImportType by remember { mutableStateOf<String?>(null) } // "CSV", "JSON", "APKG", or "EPUB"
+     var showImportDialog by remember { mutableStateOf(false) }
+     var showMappingDialog by remember { mutableStateOf(false) }
+     var mappingTargetDeckId by remember { mutableStateOf<Long?>(null) }
+     var mappingTargetDeckName by remember { mutableStateOf<String?>(null) }
+     var mappingCustomName by remember { mutableStateOf("") }
+     var mappingDuplicateStrategy by remember { mutableStateOf("UPDATE") }
+
+     // Streaming Import Progress Dialog states
+     var isImportingStreaming by remember { mutableStateOf(false) }
+     var importProgressTitle by remember { mutableStateOf("Importing Questions") }
+     var importProgressStatus by remember { mutableStateOf("Processing...") }
+     var importProgressCount by remember { mutableStateOf(0) }
+     var importProgressTotal by remember { mutableStateOf(-1) }
+
+     fun safelyCacheImportUri(rawUri: android.net.Uri): android.net.Uri {
+         return try {
+             try {
+                 context.contentResolver.takePersistableUriPermission(
+                     rawUri,
+                     android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                 )
+             } catch (_: Exception) {}
+             val cached = com.example.flashcardapp.data.core.FileImportUtils.copyUriToCacheFile(context, rawUri)
+             android.net.Uri.fromFile(cached)
+         } catch (e: Exception) {
+             rawUri
+         }
+     }
 
      // APKG document picker launcher
      val importPickerLauncher = rememberLauncherForActivityResult(
          contract = ActivityResultContracts.OpenDocument()
      ) { uri ->
          uri?.let {
-             pendingImportUri = it
+             pendingImportUri = safelyCacheImportUri(it)
              pendingImportType = "APKG"
              showImportDialog = true
          }
      }
 
-     // CSV document picker launcher
+     // CSV / JSON / ZIP document picker launcher
      val importCsvPickerLauncher = rememberLauncherForActivityResult(
          contract = ActivityResultContracts.OpenDocument()
      ) { uri ->
          uri?.let {
-             pendingImportUri = it
-             pendingImportType = "CSV"
+             val cachedUri = safelyCacheImportUri(it)
+             pendingImportUri = cachedUri
+             val name = repo.getFileName(it).lowercase()
+             pendingImportType = when {
+                 name.endsWith(".zip") -> "ZIP"
+                 name.endsWith(".json") -> "JSON"
+                 else -> "CSV"
+             }
              showImportDialog = true
          }
      }
@@ -845,8 +939,22 @@ fun MainLayout(
          contract = ActivityResultContracts.OpenDocument()
      ) { uri ->
          uri?.let {
-             pendingImportUri = it
-             pendingImportType = "EPUB"
+             val cachedUri = safelyCacheImportUri(it)
+             pendingImportUri = cachedUri
+             val name = repo.getFileName(it).lowercase()
+             pendingImportType = if (name.endsWith(".zip")) "ZIP" else "EPUB"
+             showImportDialog = true
+         }
+     }
+
+     // PDF document picker launcher (Multi-Column Question Booklet)
+     val importPdfPickerLauncher = rememberLauncherForActivityResult(
+         contract = ActivityResultContracts.OpenDocument()
+     ) { uri ->
+         uri?.let {
+             val cachedUri = safelyCacheImportUri(it)
+             pendingImportUri = cachedUri
+             pendingImportType = "PDF"
              showImportDialog = true
          }
      }
@@ -870,17 +978,34 @@ fun MainLayout(
          }
      }
 
-     // Show Import dialog whenever a CSV or APKG URI is pending
+     // Show Import dialog whenever a CSV, PDF, or APKG URI is pending
      if (showImportDialog && pendingImportUri != null && pendingImportType != null) {
          val fileType = pendingImportType!!
-         ImportDeckDialog(
-             fileType = fileType,
-             decks = decksList,
-             onDismiss = {
-                 showImportDialog = false
-                 pendingImportUri = null
-                 pendingImportType = null
-             },
+         if (fileType == "PDF") {
+             PdfSegmentConfigDialog(
+                 uri = pendingImportUri!!,
+                 decks = decksList,
+                 onDismiss = {
+                     showImportDialog = false
+                     pendingImportUri = null
+                     pendingImportType = null
+                 },
+                 onSuccess = { deckName, cardCount ->
+                     showImportDialog = false
+                     pendingImportUri = null
+                     pendingImportType = null
+                     reloadDbStats()
+                 }
+             )
+         } else {
+             ImportDeckDialog(
+                 fileType = fileType,
+                 decks = decksList,
+                 onDismiss = {
+                     showImportDialog = false
+                     pendingImportUri = null
+                     pendingImportType = null
+                 },
              onNewDeck = { customName, duplicateStrategy ->
                  showImportDialog = false
                  val fileUri = pendingImportUri ?: return@ImportDeckDialog
@@ -890,23 +1015,51 @@ fun MainLayout(
                      mappingTargetDeckId = null
                      mappingTargetDeckName = null
                      showMappingDialog = true
+                 } else if (fileType == "JSON") {
+                     pendingImportUri = null
+                     pendingImportType = null
+                     importProgressTitle = "Importing JSON Deck"
+                     importProgressStatus = "Preparing JSON records..."
+                     importProgressCount = 0
+                     importProgressTotal = -1
+                     isImportingStreaming = true
+                     coroutineScope.launch {
+                         val result = repo.importJson(
+                             uri = fileUri,
+                             duplicateStrategy = duplicateStrategy,
+                             targetDeckName = customName.ifEmpty { null },
+                             onProgress = { count, total ->
+                                 importProgressCount = count
+                                 importProgressTotal = total
+                                 importProgressStatus = if (total > 0) "Importing $count of $total items..." else "Imported $count items..."
+                             }
+                         )
+                         isImportingStreaming = false
+                         if (result.success) {
+                             Toast.makeText(
+                                 context,
+                                 "Successfully imported: ${result.fileName}\nDecks/Cards: ${result.totalCards}",
+                                 Toast.LENGTH_LONG
+                             ).show()
+                             reloadDbStats()
+                         } else {
+                             Toast.makeText(
+                                 context,
+                                 "Import failed: ${result.error}",
+                                 Toast.LENGTH_LONG
+                             ).show()
+                         }
+                     }
                  } else {
                      pendingImportUri = null
                      pendingImportType = null
                      coroutineScope.launch {
                          Toast.makeText(context, "Importing $fileType as new deck...", Toast.LENGTH_SHORT).show()
-                         val result = if (fileType == "APKG") {
-                             if (customName.isNotEmpty()) {
-                                 repo.importApkg(fileUri, targetDeckName = customName)
-                             } else {
-                                 repo.importApkg(fileUri)
-                             }
-                         } else {
-                             if (customName.isNotEmpty()) {
-                                 repo.importEpub(fileUri, targetDeckName = customName)
-                             } else {
-                                 repo.importEpub(fileUri)
-                             }
+                         val result = when (fileType) {
+                             "ZIP" -> if (customName.isNotEmpty()) repo.importZip(fileUri, duplicateStrategy, targetDeckName = customName) else repo.importZip(fileUri, duplicateStrategy)
+                             "APKG" -> if (customName.isNotEmpty()) repo.importApkg(fileUri, targetDeckName = customName) else repo.importApkg(fileUri)
+                             "PDF" -> repo.importPdf(fileUri, duplicateStrategy = duplicateStrategy, targetDeckName = customName.ifEmpty { null })
+                             else -> if (customName.isNotEmpty()) repo.importEpub(fileUri, targetDeckName = customName) else repo.importEpub(fileUri)
                          }
                          if (result.success) {
                              Toast.makeText(
@@ -934,15 +1087,52 @@ fun MainLayout(
                      mappingDuplicateStrategy = duplicateStrategy
                      mappingCustomName = ""
                      showMappingDialog = true
+                 } else if (fileType == "JSON") {
+                     pendingImportUri = null
+                     pendingImportType = null
+                     importProgressTitle = "Merging JSON into '$targetName'"
+                     importProgressStatus = "Preparing JSON records..."
+                     importProgressCount = 0
+                     importProgressTotal = -1
+                     isImportingStreaming = true
+                     coroutineScope.launch {
+                         val result = repo.importJsonIntoExistingDeck(
+                             uri = fileUri,
+                             targetDeckId = targetId,
+                             targetDeckName = targetName,
+                             duplicateStrategy = duplicateStrategy,
+                             onProgress = { count, total ->
+                                 importProgressCount = count
+                                 importProgressTotal = total
+                                 importProgressStatus = if (total > 0) "Merging $count of $total items..." else "Merged $count items..."
+                             }
+                         )
+                         isImportingStreaming = false
+                         if (result.success) {
+                             Toast.makeText(
+                                 context,
+                                 "Merged ${result.totalCards} cards into '$targetName'",
+                                 Toast.LENGTH_LONG
+                             ).show()
+                             reloadDbStats()
+                         } else {
+                             Toast.makeText(
+                                 context,
+                                 "Merge failed: ${result.error}",
+                                 Toast.LENGTH_LONG
+                             ).show()
+                         }
+                     }
                  } else {
                      pendingImportUri = null
                      pendingImportType = null
                      coroutineScope.launch {
                          Toast.makeText(context, "Merging $fileType into '$targetName'...", Toast.LENGTH_SHORT).show()
-                         val result = if (fileType == "APKG") {
-                             repo.importApkg(fileUri, targetDeckId = targetId, targetDeckName = targetName)
-                         } else {
-                             repo.importEpub(fileUri, targetDeckId = targetId, targetDeckName = targetName)
+                         val result = when (fileType) {
+                             "ZIP" -> repo.importZipIntoExistingDeck(fileUri, targetId, targetName, duplicateStrategy)
+                             "APKG" -> repo.importApkg(fileUri, targetDeckId = targetId, targetDeckName = targetName)
+                             "PDF" -> repo.importPdf(fileUri, duplicateStrategy = duplicateStrategy, targetDeckId = targetId, targetDeckName = targetName)
+                             else -> repo.importEpub(fileUri, targetDeckId = targetId, targetDeckName = targetName)
                          }
                          if (result.success) {
                              Toast.makeText(
@@ -963,6 +1153,7 @@ fun MainLayout(
              }
          )
      }
+ }
 
      if (showMappingDialog && pendingImportUri != null) {
          CsvMappingDialog(
@@ -982,13 +1173,38 @@ fun MainLayout(
                  val customName = mappingCustomName
                  val duplicateStrategy = mappingDuplicateStrategy
 
+                 importProgressTitle = if (targetId != null && targetName != null) "Merging CSV into '$targetName'" else "Importing CSV Deck"
+                 importProgressStatus = "Parsing and validating rows..."
+                 importProgressCount = 0
+                 importProgressTotal = -1
+                 isImportingStreaming = true
+
                  coroutineScope.launch {
-                     Toast.makeText(context, "Parsing and importing CSV...", Toast.LENGTH_SHORT).show()
                      val result = if (targetId != null && targetName != null) {
-                         repo.importCsvIntoExistingDeck(fileUri, targetId, targetName, duplicateStrategy, mapping)
+                         repo.importCsvIntoExistingDeck(
+                             uri = fileUri,
+                             targetDeckId = targetId,
+                             targetDeckName = targetName,
+                             duplicateStrategy = duplicateStrategy,
+                             columnMapping = mapping,
+                             onProgress = { count, total ->
+                                 importProgressCount = count
+                                 importProgressTotal = total
+                                 importProgressStatus = if (total > 0) "Importing $count of $total rows..." else "Imported $count rows..."
+                             }
+                         )
                      } else {
                          if (customName.isNotEmpty()) {
-                             val tempResult = repo.importCsv(fileUri, duplicateStrategy, mapping)
+                             val tempResult = repo.importCsv(
+                                 uri = fileUri,
+                                 duplicateStrategy = duplicateStrategy,
+                                 columnMapping = mapping,
+                                 onProgress = { count, total ->
+                                     importProgressCount = count
+                                     importProgressTotal = total
+                                     importProgressStatus = if (total > 0) "Importing $count of $total rows..." else "Imported $count rows..."
+                                 }
+                             )
                              if (tempResult.success) {
                                  val createdDeck = repo.getAllDecks().find { it.name == tempResult.fileName.removeSuffix(".csv") || it.name == tempResult.fileName }
                                  if (createdDeck != null) {
@@ -997,9 +1213,19 @@ fun MainLayout(
                              }
                              tempResult
                          } else {
-                             repo.importCsv(fileUri, duplicateStrategy, mapping)
+                             repo.importCsv(
+                                 uri = fileUri,
+                                 duplicateStrategy = duplicateStrategy,
+                                 columnMapping = mapping,
+                                 onProgress = { count, total ->
+                                     importProgressCount = count
+                                     importProgressTotal = total
+                                     importProgressStatus = if (total > 0) "Importing $count of $total rows..." else "Imported $count rows..."
+                                 }
+                             )
                          }
                      }
+                     isImportingStreaming = false
                      if (result.success) {
                          Toast.makeText(
                              context,
@@ -1019,6 +1245,15 @@ fun MainLayout(
          )
      }
 
+     if (isImportingStreaming) {
+         ImportProgressDialog(
+             title = importProgressTitle,
+             statusMessage = importProgressStatus,
+             currentCount = importProgressCount,
+             totalEstimate = importProgressTotal
+         )
+     }
+
     when (val screen = currentScreen) {
         Screen.DeckSelection -> {
              DeckSelectionScreen(
@@ -1031,6 +1266,10 @@ fun MainLayout(
                  attemptsToday = attemptsToday,
                  isDarkMode = isDarkMode,
                  onDarkModeToggle = onDarkModeToggle,
+                 useOledBlack = useOledBlack,
+                 onUseOledBlackToggle = onUseOledBlackToggle,
+                 fontScaleFactor = fontScaleFactor,
+                 onFontScaleFactorChange = onFontScaleFactorChange,
                  themePreset = themePreset,
                  onThemePresetChange = onThemePresetChange,
                  fontFamilyType = fontFamilyType,
@@ -1059,6 +1298,11 @@ fun MainLayout(
                          arrayOf("application/epub+zip", "*/*")
                      )
                  },
+                 onImportPdfClicked = {
+                     importPdfPickerLauncher.launch(
+                         arrayOf("application/pdf", "*/*")
+                     )
+                 },
                  onSelectDeck = { deck ->
                      val deckMode = settingsRepo.getPreferredModeForDeck(deck.id) ?: currentMode
                      currentScreen = Screen.Quiz(deck, deckMode)
@@ -1066,9 +1310,9 @@ fun MainLayout(
                  onProfileClicked = {
                      currentScreen = Screen.Profile
                  },
-                 onDeleteDeck = { deck ->
+                 onDeleteDeck = { deckPath ->
                      coroutineScope.launch {
-                         repo.deleteDeck(deck.id)
+                         repo.deleteDeckByPath(deckPath)
                          reloadDbStats()
                          withContext(Dispatchers.Main) {
                              Toast.makeText(context, "Deck deleted", Toast.LENGTH_SHORT).show()
@@ -1077,7 +1321,11 @@ fun MainLayout(
                  },
                  onRenameDeck = { deck, newName ->
                      coroutineScope.launch {
-                         repo.renameDeck(deck.id, newName)
+                         if (deck.id != -1L) {
+                             repo.renameDeck(deck.id, newName)
+                         } else {
+                             repo.renameDeckByPath(deck.name, newName)
+                         }
                          reloadDbStats()
                          withContext(Dispatchers.Main) {
                              Toast.makeText(context, "Deck renamed to \"$newName\"", Toast.LENGTH_SHORT).show()
@@ -1124,8 +1372,12 @@ fun MainLayout(
                      val defaultFilename = "${deck.name.replace("::", "_")}.apkg"
                      exportApkgLauncher.launch(defaultFilename)
                  },
-                 onDeckOrderChanged = {
-                     deckOrderTrigger++
+                 onDeckOrderChanged = { newOrderIds ->
+                     coroutineScope.launch {
+                         repo.reorderDecks(newOrderIds)
+                         settingsRepo.setDeckOrderList(newOrderIds)
+                         deckOrderTrigger++
+                     }
                  },
                  repo = repo,
                  onStartRevisionSession = { deckIds, isStarredOnly, sessionMode ->
@@ -1143,6 +1395,20 @@ fun MainLayout(
                          customDeckIds = deckIds.takeIf { !isStarredOnly && it.size > 1 },
                          isStarredOnly = isStarredOnly
                      )
+                 },
+                 onStartCombinedTest = { selectedPaths, selectedTags ->
+                     val dummyDeck = AnkiDeck(id = -300L, name = "Index Combined Test")
+                     currentScreen = Screen.Quiz(
+                         deck = dummyDeck,
+                         mode = currentMode,
+                         customDeckPaths = selectedPaths.ifEmpty { null },
+                         customTags = selectedTags.ifEmpty { null }
+                     )
+                 },
+                 onOpenPlugins = { currentScreen = Screen.Plugins },
+                 onOpenCurrentAffairs = { currentScreen = Screen.CurrentAffairs },
+                 onStartMockExam = { deck, preset ->
+                     currentScreen = Screen.MockExam(deck, preset)
                  }
              )
          }
@@ -1208,6 +1474,7 @@ fun MainLayout(
                 onQuestionLimitChange = {
                     questionLimit = it
                     settingsRepo.questionLimit = it
+                    reloadDbStats()
                 },
                 shuffleQuestions = shuffleQuestions,
                 onShuffleQuestionsToggle = {
@@ -1253,7 +1520,52 @@ fun MainLayout(
                 },
                 onBackPressed = {
                     currentScreen = Screen.DeckSelection
-                }
+                },
+                decks = decksList,
+                onImportApkgClicked = {
+                    importPickerLauncher.launch(
+                        arrayOf("application/octet-stream", "application/zip", "*/*")
+                    )
+                },
+                onImportCsvClicked = {
+                    importCsvPickerLauncher.launch(
+                        arrayOf("*/*")
+                    )
+                },
+                onImportEpubClicked = {
+                    importEpubPickerLauncher.launch(
+                        arrayOf("application/epub+zip", "*/*")
+                    )
+                },
+                onImportPdfClicked = {
+                    importPdfPickerLauncher.launch(
+                        arrayOf("application/pdf", "*/*")
+                    )
+                },
+                onExportDeck = { deck ->
+                    deckToExport = deck
+                    val defaultFilename = "${deck.name.replace("::", "_")}.apkg"
+                    exportApkgLauncher.launch(defaultFilename)
+                },
+                onOpenPlugins = { currentScreen = Screen.Plugins },
+                onOpenCurrentAffairs = { currentScreen = Screen.CurrentAffairs }
+            )
+        }
+        is Screen.Plugins -> {
+            BackHandler {
+                currentScreen = Screen.Settings
+            }
+            PluginManagementScreen(
+                pluginRepository = pluginRepository,
+                onNavigateBack = { currentScreen = Screen.Settings }
+            )
+        }
+        is Screen.CurrentAffairs -> {
+            BackHandler {
+                currentScreen = Screen.Settings
+            }
+            com.example.flashcardapp.ui.CurrentAffairsSettingsScreen(
+                onBackClicked = { currentScreen = Screen.Settings }
             )
         }
         is Screen.Quiz -> {
@@ -1263,7 +1575,7 @@ fun MainLayout(
              var showAbandonDialog by remember { mutableStateOf(false) }
              var showCapacityAlert by remember(screen.deck, screen.mode, screen.sessionKey) { mutableStateOf(false) }
              var adDismissed by remember(screen.deck, screen.mode, screen.sessionKey, isPremium) {
-                 mutableStateOf(isPremium || screen.mode == McqSessionMode.PRACTICE)
+                 mutableStateOf(true) // Ads disabled
              }
 
             BackHandler {
@@ -1308,6 +1620,24 @@ fun MainLayout(
                     } else if (screen.customDeckIds != null) {
                         allCards = repo.getAllCards()
                         targetCards = allCards.filter { screen.customDeckIds.contains(it.deckId) }
+                    } else if (!screen.customDeckPaths.isNullOrEmpty() || !screen.customTags.isNullOrEmpty()) {
+                        allCards = repo.getAllCards()
+                        val gson = com.google.gson.Gson()
+                        val tagType = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
+                        targetCards = allCards.filter { card ->
+                            val pathMatch = if (screen.customDeckPaths.isNullOrEmpty()) true else {
+                                screen.customDeckPaths.any { path ->
+                                    card.deckHierarchy == path || card.deckHierarchy.startsWith("$path::")
+                                }
+                            }
+                            val tagMatch = if (screen.customTags.isNullOrEmpty()) true else {
+                                val cardTagsList: List<String> = try {
+                                    gson.fromJson(card.tags, tagType) ?: emptyList()
+                                } catch (e: Exception) { emptyList() }
+                                cardTagsList.any { cTag -> screen.customTags.any { tTag -> cTag.equals(tTag, ignoreCase = true) } }
+                            }
+                            pathMatch && tagMatch
+                        }
                     } else {
                         allCards = repo.getCardsForHierarchy(resolvedDeckName)
                         targetCards = allCards
@@ -1409,14 +1739,7 @@ fun MainLayout(
                 (System.currentTimeMillis() / 1000).toInt()
             }
 
-            if (!adDismissed) {
-                RealAdmobInterstitialAd(
-                    onAdDismissed = { adDismissed = true },
-                    isQuizReady = (mcqsState != null),
-                    adSessionKey = adSessionKey,
-                    adIndex = adIndex
-                )
-            } else if (mcqsState == null) {
+            if (mcqsState == null) {
                 // Skeleton loading screen mimicking QuizScreen
                 Box(
                     modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
@@ -1701,6 +2024,56 @@ fun MainLayout(
                     currentScreen = Screen.DeckSelection
                 }
             )
+        }
+        is Screen.MockExam -> {
+            var mockQuestionsState by remember(screen.deck, screen.preset) {
+                mutableStateOf<List<Mcq>?>(null)
+            }
+            BackHandler {
+                currentScreen = Screen.DeckSelection
+            }
+
+            LaunchedEffect(screen.deck, screen.preset) {
+                val questions = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    val resolvedDeckName = if (screen.deck.id > 0) {
+                        repo.getDeckById(screen.deck.id)?.fullPath ?: screen.deck.name
+                    } else {
+                        screen.deck.name
+                    }
+                    val allCards = repo.getAllCards()
+                    val targetCards = if (screen.deck.id == 999999L || screen.deck.id < 0) {
+                        allCards
+                    } else {
+                        repo.getCardsForHierarchy(resolvedDeckName)
+                    }
+                    val allAliases = repo.getAllAliases()
+                    val engine = McqEngine(optionsCount = 4)
+                    engine.generate(
+                        allCards = allCards,
+                        targetCards = targetCards.shuffled(),
+                        aliases = allAliases
+                    )
+                }
+                mockQuestionsState = questions
+            }
+
+            if (mockQuestionsState == null) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                com.example.flashcardapp.ui.MockExamScreen(
+                    deckName = screen.deck.name,
+                    questions = mockQuestionsState!!,
+                    preset = screen.preset,
+                    onFinish = { scorecard ->
+                        currentScreen = Screen.DeckSelection
+                    },
+                    onBackPressed = {
+                        currentScreen = Screen.DeckSelection
+                    }
+                )
+            }
         }
     }
 }

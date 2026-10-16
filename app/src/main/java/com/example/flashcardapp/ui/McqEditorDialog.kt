@@ -198,7 +198,14 @@ fun McqEditorDialog(
     var optionImagesList by remember(initialOptionImages) { mutableStateOf(initialOptionImages) }
 
     var addMoreMode by remember { mutableStateOf(false) }
+    var showGuideDialog by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    if (showGuideDialog) {
+        com.example.flashcardapp.ui.widgets.ImageDimensionsGuideDialog(
+            onDismiss = { showGuideDialog = false }
+        )
+    }
 
     fun saveCurrent() {
         val opts = if (isMcqType) {
@@ -258,7 +265,20 @@ fun McqEditorDialog(
                     .padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+                    IconButton(onClick = { showGuideDialog = true }) {
+                        Icon(
+                            Icons.Outlined.Info,
+                            contentDescription = "Instructions & Image Guidelines",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
 
                 // Card Type Selector
                 Row(

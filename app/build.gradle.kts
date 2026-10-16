@@ -13,8 +13,8 @@ android {
         minSdk = 26
         targetSdk = 34
         // Version scheme: 0.10 -> 0.20 -> 0.30 ...
-        versionCode = 132
-        versionName = "4.68"
+        versionCode = 172
+        versionName = "5.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
@@ -22,12 +22,18 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("../my-release-key.jks")
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "password"
-            keyAlias = System.getenv("KEY_ALIAS") ?: "key0"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: "password"
+            val keyFile = rootProject.file("my-release-key.jks")
+            if (keyFile.exists()) {
+                storeFile = keyFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "password"
+                keyAlias = System.getenv("KEY_ALIAS") ?: "key0"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: "password"
+            } else {
+                initWith(getByName("debug"))
+            }
         }
     }
+
 
     buildTypes {
         release {
@@ -50,16 +56,9 @@ android {
 
 
 
-    applicationVariants.all {
-        val variantName = name // "debug" / "release"
-        val ver = defaultConfig.versionName ?: "0"
-
-        outputs.all {
-            val out = this as com.android.build.gradle.internal.api.ApkVariantOutputImpl
-            out.outputFileName = "ankiprep-${variantName}-v${ver}.apk"
-        }
-    }
+    // Standard application configuration
 }
+
 
 dependencies {
     implementation("com.google.android.material:material:1.12.0")
@@ -104,35 +103,40 @@ dependencies {
     // HTML parsing for EPUB import
     implementation("org.jsoup:jsoup:1.17.2")
 
-    // Google ML Kit Text Recognition for Tier 2 OCR Fallback
-    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.0")
+    // Google ML Kit Bundled Text Recognition (100% offline, zero network / Play Services download required)
+    implementation("com.google.mlkit:text-recognition:16.0.0")
 
     // DocumentFile & WorkManager
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+    // OkHttp for downloading remote JS plugins and network feeds
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // Native QuickJS Engine wrapper
+    implementation("app.cash.quickjs:quickjs-android:0.9.2")
 }
 
 // ── Fixed APK release folder ─────────────────────────────────────────────────
-// Runs after assembleDebug / assembleRelease and copies the output APK into
-//   <project-root>/release/
-// Uses only resolved paths, so it is fully configuration-cache compatible.
 afterEvaluate {
     listOf("debug", "release").forEach { variant ->
         val capVariant = variant.replaceFirstChar { it.uppercase() }
         tasks.findByName("assemble$capVariant")?.doLast {
             val ver = android.defaultConfig.versionName ?: "0"
-            val apkName = "ankiprep-${variant}-v${ver}.apk"
-            val src = file("${buildDir}/outputs/apk/${variant}/${apkName}")
             val releasesDir = rootProject.file("release")
             releasesDir.mkdirs()
-            if (src.exists()) {
-                val dest = File(releasesDir, apkName)
-                src.copyTo(dest, overwrite = true)
-                println("✅  APK saved → ${dest.absolutePath}")
+            val apkDir = file("${layout.buildDirectory.asFile.get()}/outputs/apk/$variant")
+            apkDir.listFiles()?.filter { it.extension == "apk" }?.forEach { src ->
+                val dest1 = File(releasesDir, "ankiprep-$ver.apk")
+                val dest2 = File(releasesDir, "ankiprep-$variant-v$ver.apk")
+                src.copyTo(dest1, overwrite = true)
+                src.copyTo(dest2, overwrite = true)
+                println("✅ APK copied to: ${dest1.absolutePath}")
             }
         }
     }
 }
+
 
 ksp { arg("room.generateKotlin", "true") }
 

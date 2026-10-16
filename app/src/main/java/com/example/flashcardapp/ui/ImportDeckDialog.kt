@@ -45,8 +45,9 @@ fun ImportDeckDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                val titleText = if (fileType == "ZIP") "Import ZIP Archive (Book)" else "Import $fileType"
                 Text(
-                    text = "Import $fileType",
+                    text = titleText,
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -59,7 +60,7 @@ fun ImportDeckDialog(
                     FilterChip(
                         selected = importMode == "NEW",
                         onClick = { importMode = "NEW" },
-                        label = { Text("Create New Deck") },
+                        label = { Text(if (fileType == "ZIP") "Create New Book" else "Create New Deck") },
                         modifier = Modifier.weight(1f)
                     )
                     FilterChip(
@@ -75,7 +76,7 @@ fun ImportDeckDialog(
                     OutlinedTextField(
                         value = customDeckName,
                         onValueChange = { customDeckName = it },
-                        label = { Text("Deck Name (optional)") },
+                        label = { Text(if (fileType == "ZIP") "Book Name (optional)" else "Deck Name (optional)") },
                         placeholder = { Text("Leave blank for file name") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()

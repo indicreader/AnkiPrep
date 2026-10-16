@@ -53,7 +53,8 @@ data class McqSessionState(
     // Question times in milliseconds mapped by question index
     val questionTimingsMs: Map<Int, Long> = emptyMap(),
     val totalTimeTakenMs: Long = 0L,
-    val isFinished: Boolean = false
+    val isFinished: Boolean = false,
+    val activeTagFilter: String? = null
 ) {
     val currentQuestion: Mcq?
         get() = questions.getOrNull(currentQuestionIndex)
@@ -74,6 +75,8 @@ class McqSessionManager(
     private val mode: McqSessionMode,
     private val questions: List<Mcq>
 ) {
+    private val masterQuestions: List<Mcq> = questions
+
     private var state = McqSessionState(
         mode = mode,
         questions = questions,
@@ -83,7 +86,8 @@ class McqSessionManager(
         selections = emptyMap(),
         questionTimingsMs = emptyMap(),
         totalTimeTakenMs = 0L,
-        isFinished = questions.isEmpty()
+        isFinished = questions.isEmpty(),
+        activeTagFilter = null
     )
 
     private val listeners = mutableListOf<(McqSessionState) -> Unit>()
@@ -333,6 +337,29 @@ class McqSessionManager(
         )
         SessionLogger.d(TAG, "  Current question deleted from session (index: $currentIndex)")
         notifyListeners()
+    }
+
+    /**
+     * Filters active session questions to only those matching [tag].
+     * Pass null to restore all original session questions.
+     */
+    fun filterByTag(tag: String?): McqSessionState {
+        val filtered = if (tag.isNullOrBlank()) {
+            masterQuestions
+        } else {
+            masterQuestions.filter { mcq ->
+                mcq.tags.any { it.equals(tag, ignoreCase = true) }
+            }
+        }
+        state = state.copy(
+            questions = filtered,
+            currentQuestionIndex = 0,
+            activeTagFilter = if (tag.isNullOrBlank()) null else tag,
+            isFinished = filtered.isEmpty()
+        )
+        SessionLogger.d(TAG, "  Filtered session by tag: '$tag' (${filtered.size} questions match)")
+        notifyListeners()
+        return state
     }
 
     private val mainHandler: Handler? by lazy {

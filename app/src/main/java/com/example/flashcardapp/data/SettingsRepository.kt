@@ -72,6 +72,18 @@ class SettingsRepository private constructor(context: Context) {
         get() = prefs.getString("theme_preset", "EMERALD") ?: "EMERALD"
         set(value) = prefs.edit().putString("theme_preset", value).apply()
 
+    var customPrimaryColor: Long
+        get() = prefs.getLong("custom_primary_color", 0L)
+        set(value) = prefs.edit().putLong("custom_primary_color", value).apply()
+
+    var customAccentColor: Long
+        get() = prefs.getLong("custom_accent_color", 0L)
+        set(value) = prefs.edit().putLong("custom_accent_color", value).apply()
+
+    var morphismElevationFactor: Float
+        get() = prefs.getFloat("morphism_elevation_factor", 1.0f)
+        set(value) = prefs.edit().putFloat("morphism_elevation_factor", value).apply()
+
     var useDynamicWallpaperTheme: Boolean
         get() = prefs.getBoolean("use_dynamic_wallpaper_theme", false)
         set(value) = prefs.edit().putBoolean("use_dynamic_wallpaper_theme", value).apply()
@@ -87,6 +99,14 @@ class SettingsRepository private constructor(context: Context) {
     var isDarkMode: Boolean
         get() = prefs.getBoolean("is_dark_mode", false)
         set(value) = prefs.edit().putBoolean("is_dark_mode", value).apply()
+
+    var useOledBlack: Boolean
+        get() = prefs.getBoolean("use_oled_black", false)
+        set(value) = prefs.edit().putBoolean("use_oled_black", value).apply()
+
+    var fontScaleFactor: Float
+        get() = prefs.getFloat("font_scale_factor", 1.0f)
+        set(value) = prefs.edit().putFloat("font_scale_factor", value).apply()
 
     var whiteboardAutoStylusMode: Boolean
         get() = prefs.getBoolean("whiteboard_auto_stylus_mode", true)
@@ -244,6 +264,79 @@ class SettingsRepository private constructor(context: Context) {
         get() = prefs.getBoolean("delete_images_on_card_delete", true)
         set(value) = prefs.edit().putBoolean("delete_images_on_card_delete", value).apply()
 
+    var keepScreenAwakeDuringQuiz: Boolean
+        get() = prefs.getBoolean("keep_screen_awake_during_quiz", true)
+        set(value) = prefs.edit().putBoolean("keep_screen_awake_during_quiz", value).apply()
+
+    var whiteboardAutoClearOnNext: Boolean
+        get() = prefs.getBoolean("whiteboard_auto_clear_on_next", true)
+        set(value) = prefs.edit().putBoolean("whiteboard_auto_clear_on_next", value).apply()
+
+    var lastActiveDate: String
+        get() = prefs.getString("last_active_date", "") ?: ""
+        set(value) = prefs.edit().putString("last_active_date", value).apply()
+
+    var streakCount: Int
+        get() = prefs.getInt("streak_count", 0)
+        set(value) = prefs.edit().putInt("streak_count", value).apply()
+
+    var coinTokens: Int
+        get() = prefs.getInt("coin_tokens", 0)
+        set(value) = prefs.edit().putInt("coin_tokens", value).apply()
+
+    @Synchronized
+    fun recordDailyEngagement(nowMs: Long = System.currentTimeMillis()): DailyEngagementResult {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        val todayStr = sdf.format(java.util.Date(nowMs))
+        val lastDateStr = lastActiveDate
+
+        if (lastDateStr == todayStr) {
+            return DailyEngagementResult(streakCount = streakCount, coinTokens = coinTokens, coinsAwarded = 0, isNewDay = false)
+        }
+
+        val coinsAwarded: Int
+        if (lastDateStr.isEmpty()) {
+            streakCount = 1
+            coinsAwarded = 10
+            coinTokens += coinsAwarded
+            lastActiveDate = todayStr
+        } else {
+            val lastDate = try { sdf.parse(lastDateStr) } catch (e: Exception) { null }
+            val todayDate = try { sdf.parse(todayStr) } catch (e: Exception) { null }
+
+            if (lastDate != null && todayDate != null) {
+                val diffMs = todayDate.time - lastDate.time
+                val diffDays = java.util.concurrent.TimeUnit.MILLISECONDS.toDays(diffMs)
+
+                if (diffDays == 1L) {
+                    streakCount += 1
+                    coinsAwarded = 10 + minOf(streakCount * 2, 50)
+                    coinTokens += coinsAwarded
+                    lastActiveDate = todayStr
+                } else if (diffDays > 1L) {
+                    streakCount = 1
+                    coinsAwarded = 10
+                    coinTokens += coinsAwarded
+                    lastActiveDate = todayStr
+                } else {
+                    coinsAwarded = 0
+                }
+            } else {
+                streakCount = 1
+                coinsAwarded = 10
+                coinTokens += coinsAwarded
+                lastActiveDate = todayStr
+            }
+        }
+
+        return DailyEngagementResult(
+            streakCount = streakCount,
+            coinTokens = coinTokens,
+            coinsAwarded = coinsAwarded,
+            isNewDay = true
+        )
+    }
+
     var defaultAlgorithm: String
         get() = prefs.getString("default_algorithm", "FSRS") ?: "FSRS"
         set(value) = prefs.edit().putString("default_algorithm", value).apply()
@@ -303,4 +396,12 @@ class SettingsRepository private constructor(context: Context) {
         prefs.unregisterOnSharedPreferenceChangeListener(listener)
     }
 }
+
+data class DailyEngagementResult(
+    val streakCount: Int,
+    val coinTokens: Int,
+    val coinsAwarded: Int,
+    val isNewDay: Boolean
+)
+
 

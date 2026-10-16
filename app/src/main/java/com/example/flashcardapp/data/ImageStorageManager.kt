@@ -119,4 +119,59 @@ object ImageStorageManager {
     fun getFullFile(context: Context, relativePath: String): File {
         return File(context.filesDir, relativePath)
     }
+
+    /**
+     * Resolves an image path, URL, file URI, content URI, or asset URI into an object usable by Coil/AsyncImage.
+     */
+    fun resolveImageModel(context: Context, imagePath: String?): Any? {
+        if (imagePath.isNullOrBlank()) return null
+        val trimmed = imagePath.trim()
+        return when {
+            trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true) -> trimmed
+            trimmed.startsWith("content://", ignoreCase = true) -> Uri.parse(trimmed)
+            trimmed.startsWith("file:///android_asset/", ignoreCase = true) -> Uri.parse(trimmed)
+            trimmed.startsWith("file://", ignoreCase = true) -> {
+                val parsed = Uri.parse(trimmed)
+                val file = parsed.path?.let { File(it) } ?: File(trimmed.removePrefix("file://"))
+                if (file.exists() && file.isFile && file.length() > 0) file else null
+            }
+            trimmed.startsWith("/") -> {
+                val file = File(trimmed)
+                if (file.exists() && file.isFile && file.length() > 0) file else null
+            }
+            else -> {
+                val file = File(context.filesDir, trimmed)
+                if (file.exists() && file.isFile && file.length() > 0) file else null
+            }
+        }
+    }
+
+    /**
+     * Extracts image source URIs/paths from Markdown `![alt](src)` and HTML `<img src="src">` tags.
+     */
+    fun extractEmbeddedImageSources(text: String): List<String> {
+        if (text.isBlank()) return emptyList()
+        val sources = mutableListOf<String>()
+
+        val htmlRegex = Regex("""<img[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+        htmlRegex.findAll(text).forEach { match ->
+            sources.add(match.groupValues[1])
+        }
+
+        val mdRegex = Regex("""!\[.*?\]\((.*?)\)""")
+        mdRegex.findAll(text).forEach { match ->
+            sources.add(match.groupValues[1])
+        }
+
+        return sources.distinct()
+    }
+
+    /**
+     * Cleans Markdown/HTML image tags from text to allow pure text rendering without broken raw tags.
+     */
+    fun cleanImageTagsFromText(text: String): String {
+        var clean = text.replace(Regex("""<img[^>]*>""", RegexOption.IGNORE_CASE), "")
+        clean = clean.replace(Regex("""!\[.*?\]\(.*?\)"""), "")
+        return clean.trim()
+    }
 }

@@ -40,7 +40,13 @@ data class Mcq(
     /** Image to display with the explanation, if any */
     val explanationImage: String? = null,
     /** JSON string array of option images, if any */
-    val optionImagesJson: String? = null
+    val optionImagesJson: String? = null,
+    /** Optional secondary translation question text (e.g. Hindi translation for English question) */
+    val translationQuestion: String? = null,
+    /** Optional secondary translation options corresponding to [options] */
+    val translationOptions: List<String>? = null,
+    /** Optional secondary translation explanation */
+    val translationExplanation: String? = null
 ) {
     /** The correct answer text. */
     val correctAnswer: String get() = options[correctIndex]

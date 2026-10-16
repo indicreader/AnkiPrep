@@ -30,6 +30,9 @@ interface CardDao {
     suspend fun getRandomCardsOnce(limit: Int): List<CardEntity>
 
     @Query("SELECT * FROM cards ORDER BY id ASC")
+    fun observeAllCards(): Flow<List<CardEntity>>
+
+    @Query("SELECT * FROM cards ORDER BY id ASC")
     suspend fun getAllCardsOnce(): List<CardEntity>
 
     @Query("SELECT * FROM cards WHERE id = :cardId")

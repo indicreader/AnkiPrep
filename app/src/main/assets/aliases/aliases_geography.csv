@@ -1,0 +1,77 @@
+concept_id,primary_name,aliases
+geog_001,mount everest,chomolungma|sagarmatha|peak xv
+geog_002,netherlands,holland
+geog_003,united kingdom,uk|great britain|britain
+geog_004,united states,us|usa|united states of america|america
+geog_005,new york city,nyc|new york|the big apple|new amsterdam
+geog_006,sri lanka,ceylon
+geog_007,myanmar,burma
+geog_008,thailand,siam
+geog_009,ethiopia,abyssinia
+geog_010,iran,persia
+geog_011,iraq,mesopotamia
+geog_012,tokyo,edo
+geog_013,beijing,peking
+geog_014,st. petersburg,petrograd|leningrad
+geog_015,istanbul,constantinople|byzantium
+geog_016,ho chi minh city,saigon
+geog_017,ganges,ganga
+geog_018,yangtze,chang jiang|yangtse
+geog_019,yellow river,huang he
+geog_020,dead sea,salt sea
+geog_021,lake superior,gichigami
+geog_022,tasmania,van diemen's land
+geog_023,taiwan,formosa
+geog_024,zimbabwe,rhodesia
+geog_025,cambodia,kampuchea
+geog_026,hawaii,sandwich islands|hawaiian islands
+geog_027,switzerland,helvetia|swiss confederation
+geog_028,gulf stream,north atlantic drift
+geog_029,aurora borealis,northern lights
+geog_030,aurora australis,southern lights
+geog_031,ayers rock,uluru
+geog_032,mt. mckinley,denali
+geog_033,k2,chogori|mount godwin-austen
+geog_034,cape of good hope,cape of storms
+geog_035,amazon river,rio amazonas
+geog_036,english channel,la manche
+geog_037,mediterranean sea,the med
+geog_038,black sea,euxine sea
+geog_039,sea of japan,east sea
+geog_040,persian gulf,the gulf
+geog_041,mumbai,bombay
+geog_042,kolkata,calcutta
+geog_043,chennai,madras
+geog_044,dhaka,dacca
+geog_045,ankara,angora
+geog_046,oslo,christiania
+geog_047,harare,salisbury
+geog_048,maputo,lourenco marques
+geog_049,jakarta,batavia
+geog_050,vanuatu,new hebrides
+geog_051,ghana,gold coast
+geog_052,democratic republic of the congo,drc|belgian congo|zaire
+geog_053,namibia,south-west africa
+geog_054,lesotho,basutoland
+geog_055,botswana,bechuanaland
+geog_056,malawi,nyasaland
+geog_057,bangladesh,east pakistan
+geog_058,central african republic,ubangi-shari
+geog_059,benin,dahomey
+geog_060,burkina faso,upper volta
+geog_061,equatorial guinea,spanish guinea
+geog_062,djibouti,french somaliland
+geog_063,samoa,western samoa
+geog_064,mozambique,portuguese east africa
+geog_065,angola,portuguese west africa
+geog_066,madagascar,malagasy republic
+geog_067,antarctic peninsula,graham land|palmer land
+geog_068,south sandwich islands,sandwich land
+geog_069,czech republic,czechia|bohemia
+geog_070,spitsbergen,svalbard
+geog_071,falkland islands,islas malvinas
+geog_072,cote d'ivoire,ivory coast
+geog_073,cabo verde,cape verde
+geog_074,timor-leste,east timor
+geog_075,north macedonia,macedonia
+geog_076,eswatini,swaziland

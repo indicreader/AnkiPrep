@@ -585,6 +585,22 @@ fun ProfileTab(
                 }
             }
 
+            // 365-Day Study Activity Heatmap
+            val activityMap = remember(sessionRecords) {
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                val map = mutableMapOf<String, Int>()
+                sessionRecords.forEach { record ->
+                    val dateKey = sdf.format(java.util.Date(record.timestamp))
+                    map[dateKey] = (map[dateKey] ?: 0) + record.totalQuestions
+                }
+                map
+            }
+
+            com.example.flashcardapp.ui.components.ActivityHeatmap(
+                activityData = activityMap,
+                modifier = Modifier.fillMaxWidth()
+            )
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),

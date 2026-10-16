@@ -1,0 +1,26 @@
+[
+  {
+    "question": "Which gas is most abundant in the Earth's atmosphere?",
+    "options": ["Nitrogen", "Oxygen", "Argon", "Carbon Dioxide"],
+    "answer": "Nitrogen",
+    "explanation": "Nitrogen makes up roughly 78.08% of Earth's atmosphere by volume.",
+    "topic": "General Science",
+    "subtopic": "Atmosphere"
+  },
+  {
+    "question": "What is the capital city of Australia?",
+    "options": ["Canberra", "Sydney", "Melbourne", "Brisbane"],
+    "answer": "Canberra",
+    "explanation": "Canberra was chosen as the capital in 1908 as a compromise between Sydney and Melbourne.",
+    "topic": "Geography",
+    "subtopic": "World Capitals"
+  },
+  {
+    "question": "Who is considered the father of the Indian Constitution?",
+    "options": ["Dr. B.R. Ambedkar", "Mahatma Gandhi", "Jawaharlal Nehru", "Sardar Vallabhbhai Patel"],
+    "answer": "Dr. B.R. Ambedkar",
+    "explanation": "Dr. B.R. Ambedkar served as the Chairman of the Drafting Committee of the Constituent Assembly.",
+    "topic": "Polity",
+    "subtopic": "Constitutional Framework"
+  }
+]

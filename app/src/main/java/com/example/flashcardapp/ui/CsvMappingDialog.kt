@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.flashcardapp.data.CsvImporter
+import com.example.flashcardapp.data.core.CsvQuoteUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -60,37 +61,23 @@ fun CsvMappingDialog(
     LaunchedEffect(uri) {
         try {
             val result = withContext(Dispatchers.IO) {
-                val inputStream = context.contentResolver.openInputStream(uri)
-                    ?: throw IllegalArgumentException("Cannot open file")
-
-                val lines = mutableListOf<String>()
-                BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8)).use { reader ->
-                    var line: String?
-                    var count = 0
-                    while (reader.readLine().also { line = it } != null && count < 6) {
-                        val trimmed = line!!.trim()
-                        if (trimmed.isNotEmpty()) {
-                            lines.add(trimmed)
-                            count++
-                        }
-                    }
-                }
+                val lines = com.example.flashcardapp.data.core.FileImportUtils.readPreviewLines(context, uri, maxLines = 10)
 
                 if (lines.isEmpty()) {
-                    throw IllegalStateException("File is empty")
+                    throw IllegalStateException("File is empty or contains no readable text.")
                 }
 
-                // Detect delimiter using first line
-                val firstLine = lines.first()
+                // Detect delimiter using all preview lines for reliability
                 val counts = mapOf(
-                    ',' to firstLine.count { it == ',' },
-                    ';' to firstLine.count { it == ';' },
-                    '\t' to firstLine.count { it == '\t' }
+                    ',' to lines.sumOf { l -> l.count { it == ',' } },
+                    ';' to lines.sumOf { l -> l.count { it == ';' } },
+                    '\t' to lines.sumOf { l -> l.count { it == '\t' } }
                 )
                 val delim = counts.maxByOrNull { it.value }?.takeIf { it.value > 0 }?.key ?: ','
 
-                // Parse rows helper
-                val parsed = lines.map { CsvImporterJavaHelper.splitCsvLine(it, delim) }
+                // Pre-check and sanitize CSV preview rows
+                val sanitizedText = CsvQuoteUtils.sanitizeAndQuoteCsv(lines.joinToString("\n"), delim)
+                val parsed = CsvQuoteUtils.parseCsv(sanitizedText, delim)
                 Triple(delim, parsed, lines)
             }
 
@@ -119,14 +106,24 @@ fun CsvMappingDialog(
                     val headerName = headerRow.getOrNull(colIndex) ?: ""
                     columnMappings[colIndex] = when {
                         // 1. Heuristic based on header names:
+                        headerName.contains("subtopic") || headerName.contains("sub_topic") || headerName.contains("sub-topic") -> "SUBTOPIC"
+                        headerName.contains("topic") || headerName == "category" -> "TOPIC"
                         headerName.contains("question") || headerName.contains("front") || headerName == "q" || headerName == "term" -> "FRONT"
-                        headerName.contains("answer") || headerName.contains("back") || headerName == "a" || headerName == "definition" -> "BACK"
-                        headerName.contains("explain") || headerName.contains("exp") || headerName == "notes" || headerName == "details" -> "EXPLANATION"
+                        headerName.contains("correct") || headerName.contains("answer") || headerName.contains("back") || headerName == "a" || headerName == "definition" || headerName == "ans" || headerName == "key" -> "BACK"
+                        headerName.contains("explain") || headerName.contains("exp") || headerName == "notes" || headerName == "details" || headerName == "sol" || headerName == "solution" -> "EXPLANATION"
                         headerName.contains("tag") -> "TAGS"
-                        headerName.contains("option") -> "OPTION"
+                        headerName.contains("option") || headerName.startsWith("opt") || headerName in setOf("a", "b", "c", "d", "choice", "distractor") -> "OPTION"
                         
                         // 2. Count-based fallback if no header match:
                         else -> when (maxCols) {
+                            5 -> when (colIndex) {
+                                0 -> "TOPIC"
+                                1 -> "SUBTOPIC"
+                                2 -> "FRONT"
+                                3 -> "BACK"
+                                4 -> "EXPLANATION"
+                                else -> "NONE"
+                            }
                             3 -> when (colIndex) {
                                 0 -> "FRONT"
                                 1 -> "BACK"
@@ -283,6 +280,8 @@ fun CsvMappingDialog(
                                             "BACK" -> "Map: Answer"
                                             "EXPLANATION" -> "Map: Rationale"
                                             "TAGS" -> "Map: Tags"
+                                            "TOPIC" -> "Map: Topic"
+                                            "SUBTOPIC" -> "Map: Subtopic"
                                             "OPTION" -> "Map: Option"
                                             else -> "Ignore Column"
                                         }
@@ -340,6 +339,20 @@ fun CsvMappingDialog(
                                                     text = { Text("Map to Option / Answer") },
                                                     onClick = {
                                                         columnMappings[colIndex] = "BACK"
+                                                        dropdownExpanded = false
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Map to Topic (Hidden Metadata)") },
+                                                    onClick = {
+                                                        columnMappings[colIndex] = "TOPIC"
+                                                        dropdownExpanded = false
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Map to Subtopic (Hidden Metadata)") },
+                                                    onClick = {
+                                                        columnMappings[colIndex] = "SUBTOPIC"
                                                         dropdownExpanded = false
                                                     }
                                                 )
@@ -447,35 +460,18 @@ private fun borderStrokeForMap(mapping: String): androidx.compose.foundation.Bor
 
 object CsvImporterJavaHelper {
     fun splitCsvLine(line: String, delimiter: Char): List<String> {
-        val result = mutableListOf<String>()
-        val current = StringBuilder()
-        var inQuotes = false
-        var i = 0
-        while (i < line.length) {
-            val c = line[i]
-            when {
-                c == '"' && !inQuotes -> inQuotes = true
-                c == '"' && inQuotes && i + 1 < line.length && line[i + 1] == '"' -> {
-                    current.append('"'); i++
-                }
-                c == '"' && inQuotes -> inQuotes = false
-                c == delimiter && !inQuotes -> {
-                    result.add(current.toString())
-                    current.clear()
-                }
-                else -> current.append(c)
-            }
-            i++
-        }
-        result.add(current.toString())
-        return result
+        return CsvQuoteUtils.parseCsvLine(line, delimiter)
     }
 
     fun looksLikeHeader(firstLine: String, delimiter: Char): Boolean {
         val parts = splitCsvLine(firstLine, delimiter)
-        val headers = setOf("front", "back", "question", "answer", "term", "definition", "q", "a", "tags")
+        val headers = setOf(
+            "front", "back", "question", "answer", "term", "definition", "q", "a", "tags",
+            "ques", "ans", "explanation", "explain", "explaination", "prompt", "fact", "liner ques", "one-liner",
+            "topic", "subtopic", "sub_topic", "sub-topic", "category"
+        )
         val first = parts.getOrNull(0)?.trim()?.trimQuotes()?.lowercase() ?: return false
-        return first in headers
+        return first in headers || parts.any { it.trim().trimQuotes().lowercase() in headers }
     }
 
     private fun String.trimQuotes(): String {

@@ -12,6 +12,7 @@ import com.example.flashcardapp.data.EpubImporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.withContext
 import android.net.Uri
 
@@ -239,11 +240,52 @@ class AnkiDataRepository(
     // Read Operations (from Room cache)
     // ========================================================================
 
+    /** Ensures parent DeckEntity entries exist for all nested deck hierarchy paths. */
+    suspend fun ensureParentDecksExist(): Unit = withContext(Dispatchers.IO) {
+        val decks = deckDao.getAllDecksOnce()
+        val deckPathToId = decks.associate { it.fullPath to it.id }.toMutableMap()
+        val missingDecks = mutableListOf<DeckEntity>()
+
+        for (deck in decks) {
+            val parts = deck.fullPath.split("::")
+            if (parts.size > 1) {
+                var currentPath = ""
+                var parentId: Long? = null
+                for (i in 0 until parts.size - 1) {
+                    val part = parts[i]
+                    currentPath = if (currentPath.isEmpty()) part else "$currentPath::$part"
+                    var existingId = deckPathToId[currentPath]
+                    if (existingId == null) {
+                        val newId = kotlin.math.abs(java.util.UUID.randomUUID().mostSignificantBits)
+                        val newDeck = DeckEntity(
+                            id = newId,
+                            name = part,
+                            fullPath = currentPath,
+                            parentDeckId = parentId,
+                            cardCount = 0,
+                            lastSyncTimestamp = System.currentTimeMillis()
+                        )
+                        missingDecks.add(newDeck)
+                        deckPathToId[currentPath] = newId
+                        existingId = newId
+                    }
+                    parentId = existingId
+                }
+            }
+        }
+
+        if (missingDecks.isNotEmpty()) {
+            deckDao.insertDecksIgnore(missingDecks)
+            Log.d(TAG, "Ensured parent decks exist, inserted ${missingDecks.size} parent deck entities.")
+        }
+    }
+
     /** Reactive stream of all cached decks, ordered by hierarchy path. */
-    fun observeDecks(): Flow<List<DeckEntity>> = deckDao.getAllDecks()
+    fun observeDecks(): Flow<List<DeckEntity>> = deckDao.getAllDecks().onStart { ensureParentDecksExist() }
 
     /** One-shot fetch of all cached decks. */
     suspend fun getAllDecks(): List<DeckEntity> = withContext(Dispatchers.IO) {
+        ensureParentDecksExist()
         deckDao.getAllDecksOnce()
     }
 
@@ -265,6 +307,30 @@ class AnkiDataRepository(
     /** Reactive stream of cards for a specific deck, merging local overrides. */
     fun observeCardsForDeck(deckId: Long): Flow<List<CardEntity>> {
         return cardDao.getCardsForDeck(deckId).combine(cardOverrideDao.observeAllOverrides()) { cards, overrides ->
+            val overrideMap = overrides.associateBy { it.cardId }
+            if (overrideMap.isEmpty()) cards
+            else cards.map { card ->
+                val override = overrideMap[card.id]
+                if (override != null) {
+                    card.copy(
+                        front = override.frontOverride,
+                        back = override.backOverride,
+                        tags = override.tagsOverride ?: card.tags,
+                        frontImage = override.frontImageOverride ?: card.frontImage,
+                        backImage = override.backImageOverride ?: card.backImage,
+                        explanationImage = override.explanationImageOverride ?: card.explanationImage,
+                        optionImagesJson = override.optionImagesOverrideJson ?: card.optionImagesJson
+                    )
+                } else {
+                    card
+                }
+            }
+        }
+    }
+
+    /** Reactive stream of all cached cards, merging local overrides. */
+    fun observeAllCards(): Flow<List<CardEntity>> {
+        return cardDao.observeAllCards().combine(cardOverrideDao.observeAllOverrides()) { cards, overrides ->
             val overrideMap = overrides.associateBy { it.cardId }
             if (overrideMap.isEmpty()) cards
             else cards.map { card ->
@@ -398,14 +464,90 @@ class AnkiDataRepository(
         cardDao.getCardCountForDeck(deckId)
     }
 
-    /** Parse tags JSON string back to List<String>. */
-    fun parseTags(tagsJson: String): List<String> {
-        return try {
-            val type = object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
-            gson.fromJson<List<String>>(tagsJson, type) ?: emptyList()
-        } catch (e: Exception) {
-            emptyList()
+    /** Parse tags string (JSON array, comma-delimited) back to clean List<String> with <= 5 words per tag, filtering out questions. */
+    fun parseTags(tagsJson: String?): List<String> {
+        return com.example.flashcardapp.data.core.TagQuestionUtils.parseAndFilterTags(tagsJson).first
+    }
+
+    /** Extracts any misplaced question that ended with '/' or matched a question pattern from tags. */
+    fun extractQuestionFromTags(tagsJson: String?): String? {
+        return com.example.flashcardapp.data.core.TagQuestionUtils.parseAndFilterTags(tagsJson).second
+    }
+
+    /**
+     * Normalizes all existing cards and tags in the Room database cache.
+     * Applies the short comma-separated tag rule (<= 5 words) and promotes
+     * tags ending with '/' or matching question patterns to card questions.
+     *
+     * @return Count of cards updated
+     */
+    suspend fun normalizeExistingCardsAndTags(): Int = withContext(Dispatchers.IO) {
+        val allCards = cardDao.getAllCardsOnce()
+        val cardsToUpdate = mutableListOf<CardEntity>()
+
+        for (card in allCards) {
+            val (cleanTags, extractedQ) = com.example.flashcardapp.data.core.TagQuestionUtils.parseAndFilterTags(card.tags)
+            val cleanTagsJson = gson.toJson(cleanTags)
+
+            var newFront = card.front
+            var newBack = card.back
+            var needsUpdate = false
+
+            if (extractedQ != null && (card.front.isBlank() || card.front.length <= 4 || card.front.endsWith("/"))) {
+                newFront = extractedQ
+                needsUpdate = true
+            } else if (card.front.endsWith("/")) {
+                newFront = com.example.flashcardapp.data.core.TagQuestionUtils.normalizeExtractedQuestion(card.front)
+                needsUpdate = true
+            }
+
+            // Sanitize options in card.back: ensure {explain} is only at the end of the back, never leaked into answer or options
+            if (newBack.contains("{explain}", ignoreCase = true) || newBack.contains("{explanation}", ignoreCase = true)) {
+                val parsed = com.example.flashcardapp.data.core.StructuredParser.parse(newBack)
+                val cleanAnswer = parsed.answer.replace(Regex("""\{(?:explain|explanation|explaination)\}.*""", RegexOption.IGNORE_CASE), "").trim()
+                val cleanOptions = parsed.options.map { opt ->
+                    opt.replace(Regex("""\{(?:explain|explanation|explaination)\}.*""", RegexOption.IGNORE_CASE), "").trim()
+                }.filter { it.isNotEmpty() }
+                val cleanExpl = parsed.explanation.replace(Regex("""\{(?:explain|explanation|explaination)\}""", RegexOption.IGNORE_CASE), "").trim()
+
+                val reconstructedBack = buildString {
+                    append(cleanAnswer)
+                    if (cleanOptions.isNotEmpty()) {
+                        append(" | ")
+                        append(cleanOptions.joinToString(" | "))
+                    }
+                    if (cleanExpl.isNotEmpty()) {
+                        append(" {explain} ")
+                        append(cleanExpl)
+                    }
+                }
+                if (reconstructedBack.isNotBlank() && reconstructedBack != newBack) {
+                    newBack = reconstructedBack
+                    needsUpdate = true
+                }
+            }
+
+            if (cleanTagsJson != card.tags) {
+                needsUpdate = true
+            }
+
+            if (needsUpdate) {
+                cardsToUpdate.add(card.copy(
+                    front = newFront,
+                    back = newBack,
+                    tags = cleanTagsJson,
+                    lastSyncTimestamp = System.currentTimeMillis()
+                ))
+            }
         }
+
+        if (cardsToUpdate.isNotEmpty()) {
+            cardsToUpdate.chunked(200).forEach { batch ->
+                cardDao.updateCards(batch)
+            }
+            Log.i(TAG, "Normalized existing cards & tags: ${cardsToUpdate.size} cards updated across existing decks.")
+        }
+        cardsToUpdate.size
     }
 
     /** Exports a deck to .apkg format. */
@@ -440,9 +582,123 @@ class AnkiDataRepository(
         return result
     }
 
-    /** Imports a .csv flashcard file into the Room database as a new deck. */
-    suspend fun importCsv(uri: Uri, duplicateStrategy: String = "UPDATE", columnMapping: Map<Int, String>? = null): ImportResult {
-        val result = CsvImporter.importCsv(context, uri, duplicateStrategy = duplicateStrategy, columnMapping = columnMapping)
+    /** Imports a local .pdf question booklet (1, 2, or 3+ columns) into the Room database. */
+    suspend fun importPdf(
+        uri: Uri,
+        duplicateStrategy: String = "IMPORT",
+        targetDeckId: Long? = null,
+        targetDeckName: String? = null,
+        columnMode: PdfColumnMode = PdfColumnMode.AUTO,
+        languageFilter: PdfLanguageFilter = PdfLanguageFilter.BOTH,
+        onProgress: (currentPage: Int, totalPages: Int, status: String) -> Unit = { _, _, _ -> }
+    ): ImportResult {
+        val result = PdfImporter.importPdf(
+            context = context,
+            uri = uri,
+            duplicateStrategy = duplicateStrategy,
+            targetDeckId = targetDeckId,
+            targetDeckName = targetDeckName,
+            columnMode = columnMode,
+            languageFilter = languageFilter,
+            onProgress = onProgress
+        )
+        if (result.success) {
+            fsrsScheduler.initializeNewCards()
+        }
+        return result
+    }
+
+    /** Imports a local .pdf question booklet with user-specified page segments for questions, answer keys, and explanations. */
+    suspend fun importPdfSegmented(
+        uri: Uri,
+        segments: List<PdfSegmentConfig>,
+        duplicateStrategy: String = "IMPORT",
+        targetDeckId: Long? = null,
+        targetDeckName: String? = null,
+        columnMode: PdfColumnMode = PdfColumnMode.AUTO,
+        languageFilter: PdfLanguageFilter = PdfLanguageFilter.BOTH,
+        onProgress: (currentPage: Int, totalPages: Int, status: String) -> Unit = { _, _, _ -> }
+    ): ImportResult {
+        val result = PdfImporter.importSegmented(
+            context = context,
+            uri = uri,
+            segments = segments,
+            duplicateStrategy = duplicateStrategy,
+            targetDeckId = targetDeckId,
+            targetDeckName = targetDeckName,
+            columnMode = columnMode,
+            languageFilter = languageFilter,
+            onProgress = onProgress
+        )
+        if (result.success) {
+            fsrsScheduler.initializeNewCards()
+        }
+        return result
+    }
+
+    /** Fast preview scan of PDF returning page count and detected chapters. */
+    suspend fun scanPdfPreview(
+        uri: Uri,
+        onProgress: (sampleIdx: Int, totalSamples: Int, status: String) -> Unit = { _, _, _ -> }
+    ): PdfPreviewInfo = PdfImporter.scanPdfPreview(context, uri, onProgress)
+
+    /** Imports a .zip archive (containing multiple CSV chapters and media) into Room database as a Book with Chapter subdecks. */
+    suspend fun importZip(
+        uri: Uri,
+        duplicateStrategy: String = "UPDATE",
+        columnMapping: Map<Int, String>? = null,
+        targetDeckId: Long? = null,
+        targetDeckName: String? = null
+    ): ImportResult {
+        val result = ZipImporter.importZip(
+            context = context,
+            uri = uri,
+            targetDeckId = targetDeckId,
+            targetDeckName = targetDeckName,
+            duplicateStrategy = duplicateStrategy,
+            columnMapping = columnMapping
+        )
+        if (result.success) {
+            fsrsScheduler.initializeNewCards()
+        }
+        return result
+    }
+
+    suspend fun importZipIntoExistingDeck(
+        uri: Uri,
+        targetDeckId: Long,
+        targetDeckName: String,
+        duplicateStrategy: String = "UPDATE",
+        columnMapping: Map<Int, String>? = null
+    ): ImportResult {
+        val result = ZipImporter.importZip(
+            context = context,
+            uri = uri,
+            targetDeckId = targetDeckId,
+            targetDeckName = targetDeckName,
+            duplicateStrategy = duplicateStrategy,
+            columnMapping = columnMapping
+        )
+        if (result.success) {
+            fsrsScheduler.initializeNewCards()
+        }
+        return result
+    }
+
+    /** Imports a .csv flashcard file into the Room database as a new deck with streaming progress. */
+    suspend fun importCsv(
+        uri: Uri,
+        duplicateStrategy: String = "UPDATE",
+        columnMapping: Map<Int, String>? = null,
+        onProgress: ((importedCount: Int, totalEstimate: Int) -> Unit)? = null
+    ): ImportResult {
+        val result = CsvImporter.importCsv(
+            context = context,
+            uri = uri,
+            duplicateStrategy = duplicateStrategy,
+            columnMapping = columnMapping,
+            onProgress = onProgress
+        )
         if (result.success) {
             fsrsScheduler.initializeNewCards()
         }
@@ -450,19 +706,67 @@ class AnkiDataRepository(
     }
 
     /**
-     * Merges a .csv flashcard file into an EXISTING deck.
-     *
-     * Cards are assigned [targetDeckId]/[targetDeckName] instead of creating a new deck.
-     * Duplicate card IDs (same front+back position) will be overwritten via upsert.
+     * Merges a .csv flashcard file into an EXISTING deck with streaming progress.
      */
     suspend fun importCsvIntoExistingDeck(
         uri: Uri,
         targetDeckId: Long,
         targetDeckName: String,
         duplicateStrategy: String = "UPDATE",
-        columnMapping: Map<Int, String>? = null
+        columnMapping: Map<Int, String>? = null,
+        onProgress: ((importedCount: Int, totalEstimate: Int) -> Unit)? = null
     ): ImportResult {
-        val result = CsvImporter.importCsv(context, uri, targetDeckId, targetDeckName, duplicateStrategy, columnMapping)
+        val result = CsvImporter.importCsv(
+            context = context,
+            uri = uri,
+            targetDeckId = targetDeckId,
+            targetDeckName = targetDeckName,
+            duplicateStrategy = duplicateStrategy,
+            columnMapping = columnMapping,
+            onProgress = onProgress
+        )
+        if (result.success) {
+            fsrsScheduler.initializeNewCards()
+        }
+        return result
+    }
+
+    /** Imports a .json question file into the Room database as a new deck with streaming progress. */
+    suspend fun importJson(
+        uri: Uri,
+        duplicateStrategy: String = "UPDATE",
+        targetDeckName: String? = null,
+        onProgress: ((importedCount: Int, totalEstimate: Int) -> Unit)? = null
+    ): ImportResult {
+        val result = JsonImporter.importJson(
+            context = context,
+            uri = uri,
+            targetDeckName = targetDeckName,
+            duplicateStrategy = duplicateStrategy,
+            onProgress = onProgress
+        )
+        if (result.success) {
+            fsrsScheduler.initializeNewCards()
+        }
+        return result
+    }
+
+    /** Merges a .json question file into an EXISTING deck with streaming progress. */
+    suspend fun importJsonIntoExistingDeck(
+        uri: Uri,
+        targetDeckId: Long,
+        targetDeckName: String,
+        duplicateStrategy: String = "UPDATE",
+        onProgress: ((importedCount: Int, totalEstimate: Int) -> Unit)? = null
+    ): ImportResult {
+        val result = JsonImporter.importJson(
+            context = context,
+            uri = uri,
+            targetDeckId = targetDeckId,
+            targetDeckName = targetDeckName,
+            duplicateStrategy = duplicateStrategy,
+            onProgress = onProgress
+        )
         if (result.success) {
             fsrsScheduler.initializeNewCards()
         }
@@ -488,13 +792,17 @@ class AnkiDataRepository(
         return result ?: "import_file"
     }
 
-    /** Imports a file, auto-detecting APKG, CSV, or EPUB based on filename. */
+    /** Imports a file, auto-detecting APKG, CSV, JSON, EPUB, or PDF based on filename. */
     suspend fun importFile(uri: Uri): ImportResult {
         val fileName = getFileName(uri).lowercase()
         return if (fileName.endsWith(".csv") || fileName.endsWith(".txt")) {
             importCsv(uri)
+        } else if (fileName.endsWith(".json")) {
+            importJson(uri)
         } else if (fileName.endsWith(".epub")) {
             EpubImporter.importEpub(context, uri)
+        } else if (fileName.endsWith(".pdf")) {
+            PdfImporter.importPdf(context, uri)
         } else {
             importApkg(uri)
         }
@@ -607,6 +915,15 @@ class AnkiDataRepository(
         deckDao.deleteDeck(deckId)
     }
 
+    suspend fun deleteDeckByPath(fullPath: String): Unit = withContext(Dispatchers.IO) {
+        Log.d(TAG, "Deleting deck hierarchy by path: $fullPath")
+        val allDecks = deckDao.getAllDecksOnce()
+        val targets = allDecks.filter { it.fullPath == fullPath || it.fullPath.startsWith("$fullPath::") }
+        targets.forEach { target ->
+            deleteDeck(target.id)
+        }
+    }
+
     /** Adds a new card using its hierarchy to resolve the deck. */
     suspend fun addCard(
         deckHierarchy: String,
@@ -619,18 +936,29 @@ class AnkiDataRepository(
         optionImagesJson: String? = null
     ): Long = withContext(Dispatchers.IO) {
         val allDecks = deckDao.getAllDecksOnce()
-        val deckId = allDecks.find { it.fullPath == deckHierarchy }?.id 
-            ?: allDecks.firstOrNull()?.id 
-            ?: return@withContext -1L
+        var deckId = allDecks.find { it.fullPath == deckHierarchy }?.id 
+        if (deckId == null) {
+            createDeck(deckHierarchy)
+            val updatedDecks = deckDao.getAllDecksOnce()
+            deckId = updatedDecks.find { it.fullPath == deckHierarchy }?.id
+        }
+        if (deckId == null) return@withContext -1L
+
+        val (cleanTags, extractedQ) = com.example.flashcardapp.data.core.TagQuestionUtils.parseAndFilterTags(tagsJson)
+        var finalFront = com.example.flashcardapp.data.core.TagQuestionUtils.normalizeExtractedQuestion(front)
+        if (finalFront.isEmpty() && extractedQ != null) {
+            finalFront = extractedQ
+        }
+        val cleanTagsJson = gson.toJson(cleanTags)
 
         val newCard = CardEntity(
             id = System.currentTimeMillis(), // Generating a temporary unique ID
             noteId = System.currentTimeMillis(),
             deckId = deckId,
             subDeckId = resolveSubDeckId(deckHierarchy, emptyMap()), // Best effort if not syncing
-            front = front,
+            front = finalFront,
             back = back,
-            tags = tagsJson,
+            tags = cleanTagsJson,
             deckHierarchy = deckHierarchy,
             lastSyncTimestamp = System.currentTimeMillis(),
             frontImage = frontImage,
@@ -686,25 +1014,32 @@ class AnkiDataRepository(
             deckDao.updateDeck(deck.copy(cardCount = maxOf(0, deck.cardCount - 1)))
         }
     }
-    /** Renames a deck and updates its subdecks and cards' hierarchy paths. */
+    /** Renames a deck by ID and updates its subdecks and cards' hierarchy paths. */
     suspend fun renameDeck(deckId: Long, newLeafName: String): Unit = withContext(Dispatchers.IO) {
-        val targetDeck = deckDao.getDeckById(deckId) ?: return@withContext
-        val oldFullPath = targetDeck.fullPath
-        
+        val targetDeck = deckDao.getDeckById(deckId)
+        if (targetDeck != null) {
+            renameDeckByPath(targetDeck.fullPath, newLeafName)
+        }
+    }
+
+    /** Renames a deck by its full path and updates all subdeck and card hierarchy paths. */
+    suspend fun renameDeckByPath(oldFullPath: String, newLeafName: String): Unit = withContext(Dispatchers.IO) {
+        ensureParentDecksExist()
         val parentPath = AnkiDroidBridge.getParentDeckPath(oldFullPath)
         val newFullPath = if (parentPath != null) "$parentPath::$newLeafName" else newLeafName
-        
+
         AppDatabase.getInstance(context).withTransaction {
             val allDecks = deckDao.getAllDecksOnce()
+            var targetFound = false
             for (deck in allDecks) {
                 if (deck.fullPath == oldFullPath) {
+                    targetFound = true
                     val updatedDeck = deck.copy(
                         name = newLeafName,
                         fullPath = newFullPath,
                         lastSyncTimestamp = System.currentTimeMillis()
                     )
                     deckDao.updateDeck(updatedDeck)
-                    
                     cardDao.updateCardsHierarchyForDeck(deck.id, newFullPath)
                 } else if (deck.fullPath.startsWith("$oldFullPath::")) {
                     val suffix = deck.fullPath.removePrefix(oldFullPath)
@@ -714,9 +1049,29 @@ class AnkiDataRepository(
                         lastSyncTimestamp = System.currentTimeMillis()
                     )
                     deckDao.updateDeck(updatedDeck)
-                    
                     cardDao.updateCardsHierarchyForDeck(deck.id, updatedFullPath)
                 }
+            }
+            if (!targetFound) {
+                val newId = kotlin.math.abs(java.util.UUID.randomUUID().mostSignificantBits)
+                val newDeck = DeckEntity(
+                    id = newId,
+                    name = newLeafName,
+                    fullPath = newFullPath,
+                    parentDeckId = null,
+                    cardCount = 0,
+                    lastSyncTimestamp = System.currentTimeMillis()
+                )
+                deckDao.insertDeckIgnore(newDeck)
+            }
+        }
+    }
+
+    /** Updates the sortOrder attribute of decks based on the list of deck IDs. */
+    suspend fun reorderDecks(orderedDeckIds: List<Long>): Unit = withContext(Dispatchers.IO) {
+        AppDatabase.getInstance(context).withTransaction {
+            orderedDeckIds.forEachIndexed { index, id ->
+                deckDao.updateDeckSortOrder(id, index)
             }
         }
     }
@@ -909,6 +1264,132 @@ class AnkiDataRepository(
             // 4. Delete the source deck
             deckDao.deleteDeck(sourceDeckId)
             Log.d(TAG, "Source deck $sourceDeckId successfully deleted and merged into target $targetDeckId")
+        }
+    }
+
+    /** Deletes multiple deck hierarchies and all their associated cards/media in a batch. */
+    suspend fun deleteDecks(deckPaths: List<String>): Unit = withContext(Dispatchers.IO) {
+        Log.d(TAG, "Deleting ${deckPaths.size} decks in batch")
+        deckPaths.forEach { path ->
+            deleteDeckByPath(path)
+        }
+    }
+
+    /**
+     * Nests multiple decks as subdecks under a master deck (hierarchical nesting).
+     * If master deck does not exist, it is created.
+     */
+    suspend fun nestDecksUnderMaster(deckPaths: List<String>, masterDeckName: String): Unit = withContext(Dispatchers.IO) {
+        val cleanMasterName = masterDeckName.trim()
+        if (cleanMasterName.isEmpty() || deckPaths.isEmpty()) return@withContext
+        Log.d(TAG, "Nesting ${deckPaths.size} decks under master deck '$cleanMasterName'")
+
+        createDeck(cleanMasterName)
+        val allDecksBefore = deckDao.getAllDecksOnce()
+        val masterDeck = allDecksBefore.firstOrNull { it.fullPath == cleanMasterName } ?: return@withContext
+
+        AppDatabase.getInstance(context).withTransaction {
+            val allDecks = deckDao.getAllDecksOnce().toMutableList()
+            for (sourcePath in deckPaths) {
+                if (sourcePath == cleanMasterName || sourcePath.startsWith("$cleanMasterName::")) {
+                    continue // Skip nesting inside itself or its children
+                }
+                val sourceDeck = allDecks.firstOrNull { it.fullPath == sourcePath } ?: continue
+                val newSourceFullPath = "${masterDeck.fullPath}::${sourceDeck.name}"
+
+                // 1. Update source deck
+                val updatedSource = sourceDeck.copy(
+                    fullPath = newSourceFullPath,
+                    parentDeckId = masterDeck.id,
+                    lastSyncTimestamp = System.currentTimeMillis()
+                )
+                deckDao.updateDeck(updatedSource)
+                cardDao.updateCardsHierarchyForDeck(sourceDeck.id, newSourceFullPath)
+
+                // 2. Update all subdecks of source deck
+                for (subDeck in allDecks) {
+                    if (subDeck.fullPath.startsWith("$sourcePath::")) {
+                        val suffix = subDeck.fullPath.removePrefix(sourcePath)
+                        val newChildFullPath = newSourceFullPath + suffix
+                        val updatedSub = subDeck.copy(
+                            fullPath = newChildFullPath,
+                            lastSyncTimestamp = System.currentTimeMillis()
+                        )
+                        deckDao.updateDeck(updatedSub)
+                        cardDao.updateCardsHierarchyForDeck(subDeck.id, newChildFullPath)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Clubs (moves) all questions from source decks into a target deck.
+     * Skips duplicate questions (by front text) if [skipDuplicates] is true.
+     * Migrates attempt logs and session records, then deletes the source decks.
+     */
+    suspend fun clubQuestionsIntoDeck(
+        sourceDeckPaths: List<String>,
+        targetDeckId: Long,
+        skipDuplicates: Boolean = true
+    ): Unit = withContext(Dispatchers.IO) {
+        Log.d(TAG, "Clubbing questions from ${sourceDeckPaths.size} decks into deck $targetDeckId (skipDuplicates=$skipDuplicates)")
+
+        AppDatabase.getInstance(context).withTransaction {
+            val targetDeck = deckDao.getDeckById(targetDeckId) ?: return@withTransaction
+            val existingCards = cardDao.getCardsForDeckOnce(targetDeckId)
+            val existingFronts = existingCards.map { it.front.trim().lowercase() }.toMutableSet()
+
+            val allDecks = deckDao.getAllDecksOnce()
+            val sourceDecksToProcess = allDecks.filter { deck ->
+                deck.id != targetDeckId && sourceDeckPaths.any { path ->
+                    deck.fullPath == path || deck.fullPath.startsWith("$path::")
+                }
+            }
+
+            for (sourceDeck in sourceDecksToProcess) {
+                val sourceCards = cardDao.getCardsForDeckOnce(sourceDeck.id)
+                for (card in sourceCards) {
+                    val normalizedFront = card.front.trim().lowercase()
+                    if (skipDuplicates && existingFronts.contains(normalizedFront)) {
+                        // Skip duplicate question and delete this card instance
+                        cardDao.deleteCard(card.id)
+                    } else {
+                        // Move card to target deck
+                        cardDao.updateCard(
+                            card.copy(
+                                deckId = targetDeckId,
+                                deckHierarchy = targetDeck.fullPath
+                            )
+                        )
+                        existingFronts.add(normalizedFront)
+                    }
+                }
+
+                // Migrate attempt logs and session records in SQLite
+                try {
+                    val db = AppDatabase.getInstance(context)
+                    db.openHelper.writableDatabase.let { sqlDb ->
+                        sqlDb.execSQL(
+                            "UPDATE card_attempts SET deckId = ? WHERE deckId = ?",
+                            arrayOf(targetDeckId, sourceDeck.id)
+                        )
+                        sqlDb.execSQL(
+                            "UPDATE session_records SET deckId = ?, deckName = ? WHERE deckId = ?",
+                            arrayOf(targetDeckId, targetDeck.name, sourceDeck.id)
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to run SQLite raw updates during clubbing: ${e.message}", e)
+                }
+
+                // Delete source deck
+                deckDao.deleteDeck(sourceDeck.id)
+            }
+
+            // Recalculate target deck's cardCount
+            val finalCount = cardDao.getCardCountForDeck(targetDeckId)
+            deckDao.updateDeck(targetDeck.copy(cardCount = finalCount))
         }
     }
 

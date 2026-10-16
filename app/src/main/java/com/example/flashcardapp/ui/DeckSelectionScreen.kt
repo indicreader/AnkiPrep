@@ -14,7 +14,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -31,6 +34,10 @@ fun DeckSelectionScreen(
     hasPermission: Boolean,
     isDarkMode: Boolean = false,
     onDarkModeToggle: (Boolean) -> Unit = {},
+    useOledBlack: Boolean = false,
+    onUseOledBlackToggle: (Boolean) -> Unit = {},
+    fontScaleFactor: Float = 1.0f,
+    onFontScaleFactorChange: (Float) -> Unit = {},
     themePreset: String = "EMERALD",
     onThemePresetChange: (String) -> Unit = {},
     fontFamilyType: String = "DEFAULT",
@@ -46,18 +53,23 @@ fun DeckSelectionScreen(
     onImportApkgClicked: () -> Unit,
     onImportCsvClicked: () -> Unit,
     onImportEpubClicked: () -> Unit = {},
+    onImportPdfClicked: () -> Unit = {},
     onSelectDeck: (AnkiDeck) -> Unit,
     onProfileClicked: () -> Unit,
-    onDeleteDeck: (AnkiDeck) -> Unit = {},
+    onDeleteDeck: (String) -> Unit = {},
     onRenameDeck: (AnkiDeck, String) -> Unit = { _, _ -> },
     onClearDeckProgress: (AnkiDeck) -> Unit = {},
     onCreateDeck: (String) -> Unit = {},
     onMergeDecks: (AnkiDeck, AnkiDeck) -> Unit = { _, _ -> },
     onAddCardToDeck: (AnkiDeck, String, String, String, String?, String?, String?, String?) -> Unit = { _, _, _, _, _, _, _, _ -> },
     onExportDeck: (AnkiDeck) -> Unit = {},
-    onDeckOrderChanged: () -> Unit = {},
+    onDeckOrderChanged: (List<Long>) -> Unit = {},
     repo: com.example.flashcardapp.data.AnkiDataRepository,
-    onStartRevisionSession: (List<Long>, Boolean, McqSessionMode) -> Unit = { _, _, _ -> }
+    onStartRevisionSession: (List<Long>, Boolean, McqSessionMode) -> Unit = { _, _, _ -> },
+    onStartCombinedTest: (List<String>, List<String>) -> Unit = { _, _ -> },
+    onStartMockExam: (AnkiDeck, com.example.flashcardapp.mock.ExamPreset) -> Unit = { _, _ -> },
+    onOpenPlugins: () -> Unit = {},
+    onOpenCurrentAffairs: () -> Unit = {}
 ) {
     val currentLanguage by com.example.flashcardapp.data.TranslationManager.currentLanguage.collectAsState()
     var activeTab by remember { mutableStateOf("Dashboard") }
@@ -70,16 +82,35 @@ fun DeckSelectionScreen(
                     .fillMaxWidth()
                     .background(Color.Transparent)
                     .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
                 contentAlignment = Alignment.BottomCenter
             ) {
+                val (navLight, navDark) = rememberNeumorphicColors(isDarkMode)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
-                        .clip(RoundedCornerShape(26.dp))
+                        .height(64.dp)
+                        .neumorphicShadow(
+                            isDarkMode = isDarkMode,
+                            cornerRadius = 24.dp,
+                            elevation = 6.dp,
+                            lightShadowColor = navLight,
+                            darkShadowColor = navDark
+                        )
+                        .clip(RoundedCornerShape(24.dp))
                         .background(MaterialTheme.colorScheme.surface)
-                        .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f), RoundedCornerShape(26.dp)),
+                        .border(
+                            BorderStroke(
+                                1.dp,
+                                Brush.linearGradient(
+                                    listOf(
+                                        navLight.copy(alpha = if (isDarkMode) 0.35f else 0.8f),
+                                        navDark.copy(alpha = if (isDarkMode) 0.5f else 0.25f)
+                                    )
+                                )
+                            ),
+                            RoundedCornerShape(24.dp)
+                        ),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -99,39 +130,42 @@ fun DeckSelectionScreen(
                     )
                     tabs.forEachIndexed { idx, (key, filledIcon, outlineIcon) ->
                         val selected = activeTab == key
-                        Box(
+                        Column(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .padding(4.dp)
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(
-                                    if (selected) MaterialTheme.colorScheme.primary
-                                    else Color.Transparent
-                                  )
-                                .clickable { activeTab = key },
-                            contentAlignment = Alignment.Center
+                                .clickable { activeTab = key }
+                                .padding(vertical = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.padding(horizontal = 8.dp)
+                            Box(
+                                modifier = Modifier
+                                    .height(28.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(
+                                        if (selected) MaterialTheme.colorScheme.primaryContainer
+                                        else Color.Transparent
+                                    )
+                                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = if (selected) filledIcon else outlineIcon,
                                     contentDescription = tabLabels[idx],
-                                    tint = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(22.dp)
+                                    tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
                                 )
-                                if (selected) {
-                                    Text(
-                                        text = tabLabels[idx],
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
-                                        color = Color.White
-                                    )
-                                }
                             }
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = tabLabels[idx],
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 10.sp,
+                                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
@@ -170,6 +204,7 @@ fun DeckSelectionScreen(
                     onImportApkgClicked = onImportApkgClicked,
                     onImportCsvClicked = onImportCsvClicked,
                     onImportEpubClicked = onImportEpubClicked,
+                    onImportPdfClicked = onImportPdfClicked,
                     onSelectDeck = onSelectDeck,
                     onDeleteDeck = onDeleteDeck,
                     onRenameDeck = onRenameDeck,
@@ -178,7 +213,9 @@ fun DeckSelectionScreen(
                     onAddCardToDeck = onAddCardToDeck,
                     onExportDeck = onExportDeck,
                     onMenuClicked = {},
-                    onDeckOrderChanged = onDeckOrderChanged
+                    onDeckOrderChanged = onDeckOrderChanged,
+                    onStartCombinedTest = onStartCombinedTest,
+                    onStartMockExam = onStartMockExam
                 )
                 "Revise" -> ReviseTab(
                     repo = repo,
@@ -194,11 +231,23 @@ fun DeckSelectionScreen(
                 "Settings" -> SettingsTab(
                     isDarkMode = isDarkMode,
                     onDarkModeToggle = onDarkModeToggle,
+                    useOledBlack = useOledBlack,
+                    onUseOledBlackToggle = onUseOledBlackToggle,
+                    fontScaleFactor = fontScaleFactor,
+                    onFontScaleFactorChange = onFontScaleFactorChange,
                     themePreset = themePreset,
                     onThemePresetChange = onThemePresetChange,
                     fontFamilyType = fontFamilyType,
                     onFontFamilyTypeChange = onFontFamilyTypeChange,
-                    onNavigateToProfile = onProfileClicked
+                    onNavigateToProfile = onProfileClicked,
+                    decks = decks,
+                    onImportApkgClicked = onImportApkgClicked,
+                    onImportCsvClicked = onImportCsvClicked,
+                    onImportEpubClicked = onImportEpubClicked,
+                    onImportPdfClicked = onImportPdfClicked,
+                    onExportDeck = onExportDeck,
+                    onOpenPlugins = onOpenPlugins,
+                    onOpenCurrentAffairs = onOpenCurrentAffairs
                 )
             }
         }

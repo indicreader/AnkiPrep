@@ -21,6 +21,9 @@ enum class AppLanguage(val code: String, val displayName: String) {
     PA("pa","ਪੰਜਾਬੀ (Punjabi)"),
     UR("ur","اردو (Urdu)"),
     MI("mi","भोजपुरी (Bhojpuri)"),
+    ML("ml", "മലയാളം (Malayalam)"),
+    MAI("mai", "मैथिली (Maithili)"),
+    SA("sa", "संस्कृतम् (Sanskrit)"),
 }
 
 object TranslationManager {
@@ -78,6 +81,9 @@ object TranslationManager {
             "clear_cache_desc" to "Clear all imported and cached deck data.",
             "back" to "Back",
             "app_language" to "App Language",
+            "language_and_translations" to "Language and Translations",
+            "language_of_app" to "Language of App",
+            "language_of_app_desc" to "Change the whole app display language.",
             "select_language" to "Select Language",
             "select_language_desc" to "Change the interface language of the application.",
             
@@ -274,6 +280,9 @@ object TranslationManager {
             "clear_cache_desc" to "सभी आयातित और कैश्ड डेक डेटा साफ़ करें।",
             "back" to "वापस",
             "app_language" to "ऐप की भाषा",
+            "language_and_translations" to "भाषा और अनुवाद",
+            "language_of_app" to "ऐप की भाषा",
+            "language_of_app_desc" to "पूरे ऐप की भाषा अपनी पसंद के अनुसार बदलें।",
             "select_language" to "भाषा चुनें",
             "select_language_desc" to "एप्लिकेशन की इंटरफ़ेस भाषा बदलें।",
             
@@ -447,6 +456,9 @@ object TranslationManager {
             "clear_cache_desc" to "இறக்குமதி செய்யப்பட்ட மற்றும் தற்காலிகமாக சேமிக்கப்பட்ட அனைத்து தரவையும் அழிக்கவும்.",
             "back" to "பின்னால்",
             "app_language" to "செயலி மொழி",
+            "language_and_translations" to "மொழி மற்றும் மொழிபெயர்ப்புகள்",
+            "language_of_app" to "செயலியின் மொழி",
+            "language_of_app_desc" to "முழு செயலியின் மொழியையும் மாற்றவும்.",
             "select_language" to "மொழியைத் தேர்ந்தெடுக்கவும்",
             "select_language_desc" to "பயன்பாட்டின் இடைமுக மொழியை மாற்றவும்.",
             
@@ -620,6 +632,9 @@ object TranslationManager {
             "clear_cache_desc" to "దిగుమతి చేసిన మరియు కాష్ చేసిన అన్ని డెక్ డేటాను క్లియర్ చేయండి.",
             "back" to "వెనుకకు",
             "app_language" to "యాప్ భాష",
+            "language_and_translations" to "భాష & అనువాదాలు",
+            "language_of_app" to "యాప్ భాష",
+            "language_of_app_desc" to "మొత్తం యాప్ ప్రదర్శన భాషను మార్చండి.",
             "select_language" to "భాషను ఎంచుకోండి",
             "select_language_desc" to "అప్లికేషన్ యొక్క ఇంటర్‌ఫేస్ భాషను మార్చండి.",
             

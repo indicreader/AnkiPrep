@@ -20,5 +20,6 @@ data class DeckEntity(
     val parentDeckId: Long? = null,
     val cardCount: Int = 0,
     val description: String = "",
-    val lastSyncTimestamp: Long = System.currentTimeMillis()
+    val lastSyncTimestamp: Long = System.currentTimeMillis(),
+    val sortOrder: Int = 0
 )

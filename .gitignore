@@ -1,20 +1,24 @@
-# JADX decompiler tool (not part of app)
+# JADX decompiler tool & artifacts (not part of app)
 jadx.zip
 jadx/
+decompiled_src/
 
-# Gradle files
+# Gradle build cache & intermediate files
 .gradle/
 build/
+app/build/
 
-# Local configuration file (sdk path, etc)
+# Local configuration files (SDK path, local secrets)
 local.properties
+my-release-key.jks
+*.jks
+*.keystore
 
 # Log/OS Files
 *.log
 .DS_Store
 Thumbs.db
 desktop.ini
-*.bat
 
 # IntelliJ / Android Studio files
 *.iml
@@ -22,29 +26,25 @@ desktop.ini
 captures/
 .externalNativeBuild/
 .cxx/
-*.apk
-*.aab
-*.ap_
 output-metadata.json
 misc.xml
 deploymentTargetDropDown.xml
 render.experimental.xml
 
-# Keystore files
-*.jks
-*.keystore
-
-# Google Services (e.g. APIs or Firebase)
+# Google Services
 google-services.json
 
-# Android Profiling
+# Android Profiling & Binaries
 *.hprof
+*.apk
+*.aab
+*.ap_
 
-# Release APKs
+# Local Release Binaries (release APKs compiled locally; release/mockups is preserved)
 release/*.apk
 !release/mockups/
 
-# Agent / AI assistant artifacts (NEVER push)
+# AI Agent & Assistant Artifacts (NEVER push to repository)
 .agent/
 .agents/
 .claude/
@@ -61,6 +61,7 @@ task.md
 walkthrough.md
 implementation_plan.md
 graphify-out/
+.graphifyignore
 scratch/
 .gemini/
 .copilot/
@@ -71,22 +72,41 @@ StitchMCP/
 claude_council.log
 claude-council.log
 .claude-council/
+.github/copilot-instructions.md
 
-# Python virtual environments
+# Python virtual environments & bytecode
 .venv/
 __pycache__/
 *.pyc
+*.pyo
 
-# Misc temp files
+# Scratch, intermediate & temporary inspection files
 *.tmp
 *.bak
-*.bat
 diff.txt
 diff_utf8.txt
 b64.txt
 tree.txt
+compile_errors.txt
+compile_errors_2.txt
+dashboard_history.txt
+temp_analytics.txt
+terms_of_condition.txt
+DashboardTab_new.kt
+DeckSelectionScreen_new.kt
+recovered_dashboard.kt
+neumorphic_mockup.html
 mockups/
+project/
+projects/
+data/
+ankiprep.code-workspace
+epub_master_prompt.md
+extract*.py
+ad_manager.py
+update_translations.py
+increment_version.py
 
-# Project-specific ignored assets
-*.apkg
-*.csv
+# Allow sample test import files
+!sample_import_files/
+!sample_import_files/**
