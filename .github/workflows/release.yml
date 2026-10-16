@@ -49,6 +49,9 @@ jobs:
             VERSION=$(grep -E 'versionName' app/build.gradle.kts | head -1 | awk -F '"' '{print $2}')
           fi
 
+          if [ -z "$VERSION" ]; then
+            VERSION="1.0.0"
+          fi
           echo "Detected version: $VERSION"
 
           if [ -n "${{ github.event.inputs.tag_name }}" ]; then
@@ -64,13 +67,19 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
           APK_SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
-          cp "$APK_SRC" "AnkiPrep-${TAG}.apk"
-          echo "artifact_path=AnkiPrep-${TAG}.apk" >> $GITHUB_OUTPUT
+          if [ -z "$APK_SRC" ]; then
+            echo "::error::No APK file found in app/build/outputs/apk/release!"
+            exit 1
+          fi
+
+          DEST_NAME="AnkiPrep-${TAG}.apk"
+          cp "$APK_SRC" "$DEST_NAME"
+          echo "artifact_path=$DEST_NAME" >> $GITHUB_OUTPUT
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.prepare_artifact.outputs.artifact_path }}
+          name: AnkiPrep-${{ steps.prepare_artifact.outputs.tag }}-build
           path: ${{ steps.prepare_artifact.outputs.artifact_path }}
           retention-days: 30
 

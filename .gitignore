@@ -97,9 +97,9 @@ DeckSelectionScreen_new.kt
 recovered_dashboard.kt
 neumorphic_mockup.html
 mockups/
-project/
-projects/
-data/
+/project/
+/projects/
+/data/
 ankiprep.code-workspace
 epub_master_prompt.md
 extract*.py
