@@ -23,6 +23,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import com.example.flashcardapp.ui.components.WhiteboardInkingEngine
+import com.example.flashcardapp.ui.components.WhiteboardTool
+import com.example.flashcardapp.ui.components.WhiteboardCapsuleToolbar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
@@ -71,7 +74,7 @@ import android.widget.Toast
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun QuizScreen(
     deckId: Long,
@@ -98,16 +101,14 @@ fun QuizScreen(
     var showWholePackScreen by remember { mutableStateOf(false) }
     var cardToEditFromPack by remember { mutableStateOf<CardEntity?>(null) }
 
-    // Whiteboard state variables
+    // Whiteboard state & inking engine
     var isWhiteBoardActive by remember { mutableStateOf(false) }
-    val whiteboardStrokes = remember { mutableStateListOf<DrawingStroke>() }
-    var currentStrokePoints by remember { mutableStateOf<List<Offset>>(emptyList()) }
-    var isEraserMode by remember { mutableStateOf(false) }
-    var eraserIndicatorPosition by remember { mutableStateOf<Offset?>(null) }
-    var penType by remember { mutableStateOf("Pen") } // Pen, Highlighter
-    var shapeType by remember { mutableStateOf("Freeform") } // Freeform, Rectangle, Circle
-    var isToolbarExpanded by remember { mutableStateOf(true) }
-    var toolbarOffset by remember { mutableStateOf(Offset.Zero) }
+    var strokeUpdateTrigger by remember { mutableLongStateOf(0L) }
+    val inkingEngine = remember {
+        WhiteboardInkingEngine(
+            onStrokesChanged = { strokeUpdateTrigger = System.currentTimeMillis() }
+        )
+    }
 
     val settingsRepo = remember { com.example.flashcardapp.data.SettingsRepository.getInstance(context) }
     val activity = context as? android.app.Activity
@@ -121,7 +122,7 @@ fun QuizScreen(
     }
     val defaultPenColorStr = remember { settingsRepo.whiteboardDefaultPenColor }
     val autoStylusMode = remember { settingsRepo.whiteboardAutoStylusMode }
-    val highlighterAlpha = remember { settingsRepo.whiteboardHighlighterAlpha }
+    var highlighterAlpha by remember { mutableFloatStateOf(settingsRepo.whiteboardHighlighterAlpha) }
     val whiteboardToolbarPosition = remember { settingsRepo.whiteboardToolbarPosition }
     val whiteboardOneFingerDoubleTapAction = remember { settingsRepo.whiteboardOneFingerDoubleTapAction }
     val whiteboardTwoFingerSingleTapAction = remember { settingsRepo.whiteboardTwoFingerSingleTapAction }
@@ -129,41 +130,36 @@ fun QuizScreen(
     val whiteboardThreeFingerSingleTapAction = remember { settingsRepo.whiteboardThreeFingerSingleTapAction }
     val whiteboardThreeFingerDoubleTapAction = remember { settingsRepo.whiteboardThreeFingerDoubleTapAction }
 
+    val initialPenColor = remember(defaultPenColorStr, isDarkMode) {
+        when (defaultPenColorStr) {
+            "RED" -> Color(0xFFE53935)
+            "BLUE" -> Color(0xFF1E88E5)
+            "GREEN" -> Color(0xFF43A047)
+            else -> if (isDarkMode) Color.White else Color.Black
+        }
+    }
+
+    var activePenColor by remember(initialPenColor) { mutableStateOf(initialPenColor) }
+    var activePenSize by remember { mutableFloatStateOf(5f) }
+    var activeTool by remember { mutableStateOf(WhiteboardTool.PEN) }
+
+    // Keep inking engine properties synchronized
+    LaunchedEffect(activeTool, activePenColor, activePenSize, highlighterAlpha) {
+        inkingEngine.activeTool = activeTool
+        inkingEngine.activeColor = activePenColor
+        inkingEngine.activeWidth = activePenSize
+        inkingEngine.highlighterAlpha = highlighterAlpha
+    }
+
     val triggerWhiteboardAction: (String) -> Unit = { action ->
         when (action) {
-            "CLEAR" -> whiteboardStrokes.clear()
-            "UNDO" -> {
-                if (whiteboardStrokes.isNotEmpty()) {
-                    whiteboardStrokes.removeAt(whiteboardStrokes.size - 1)
-                }
-            }
+            "CLEAR" -> inkingEngine.clearAll()
+            "UNDO" -> inkingEngine.undo()
             "TOGGLE" -> isWhiteBoardActive = !isWhiteBoardActive
         }
     }
 
     var isQuestionTranslated by remember { mutableStateOf(false) }
-
-    val initialPenColor = remember(defaultPenColorStr, isDarkMode) {
-        when (defaultPenColorStr) {
-            "RED" -> Color.Red
-            "BLUE" -> Color(0xFF2196F3)
-            "GREEN" -> Color(0xFF4CAF50)
-            else -> if (isDarkMode) Color.White else Color.Black
-        }
-    }
-    var activePenColor by remember(initialPenColor) { mutableStateOf(initialPenColor) }
-    var activePenSize by remember { mutableFloatStateOf(6f) }
-
-    val erasePointsNear: (Offset, Float) -> Unit = { pos, radius ->
-        val radiusSq = radius * radius
-        whiteboardStrokes.removeAll { stroke ->
-            stroke.points.any { p ->
-                val dx = p.x - pos.x
-                val dy = p.y - pos.y
-                (dx * dx + dy * dy) <= radiusSq
-            }
-        }
-    }
 
     var userRating by remember { mutableStateOf(0) }
 
@@ -251,7 +247,7 @@ fun QuizScreen(
             userRating = 0
         }
         if (settingsRepo.whiteboardAutoClearOnNext) {
-            whiteboardStrokes.clear()
+            inkingEngine.clearAll()
         }
     }
     if (isLoading) {
@@ -1216,358 +1212,76 @@ fun QuizScreen(
             )
         }
 
-        // ── Whiteboard Canvas Overlay ─────────────────────────
+        // ── Whiteboard Canvas & Modern Capsule Toolbar Overlay ──
         if (isWhiteBoardActive) {
+            // High-frequency inking canvas
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(isEraserMode, activePenSize, activePenColor, penType, shapeType) {
-                        detectDragGestures(
-                            onDragStart = { pos ->
-                                if (!isEraserMode) {
-                                    currentStrokePoints = listOf(pos)
-                                } else {
-                                    eraserIndicatorPosition = pos
-                                    erasePointsNear(pos, activePenSize * 1.5f)
-                                }
-                            },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                val pos = change.position
-                                if (!isEraserMode) {
-                                    if (shapeType == "Freeform") {
-                                        currentStrokePoints = currentStrokePoints + pos
-                                    } else {
-                                        currentStrokePoints = if (currentStrokePoints.isEmpty()) listOf(pos) else listOf(currentStrokePoints.first(), pos)
+                    .pointerInput(autoStylusMode) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Main)
+                                val firstChange = event.changes.firstOrNull() ?: continue
+
+                                // Auto-stylus detection: if enabled, reject touch finger events when drawing
+                                if (autoStylusMode) {
+                                    val isStylus = firstChange.type == androidx.compose.ui.input.pointer.PointerType.Stylus ||
+                                                   firstChange.type == androidx.compose.ui.input.pointer.PointerType.Eraser
+                                    if (!isStylus && event.changes.size > 1) {
+                                        // Let multi-touch gestures pass to global handler
+                                        continue
                                     }
-                                } else {
-                                    eraserIndicatorPosition = pos
-                                    erasePointsNear(pos, activePenSize * 1.5f)
                                 }
-                            },
-                            onDragEnd = {
-                                eraserIndicatorPosition = null
-                                if (!isEraserMode && currentStrokePoints.size >= 2) {
-                                    val alpha = if (penType == "Highlighter") highlighterAlpha else 1f
-                                    val strokeT = when (shapeType) {
-                                        "Circle" -> StrokeType.CIRCLE
-                                        "Rectangle" -> StrokeType.RECTANGLE
-                                        else -> StrokeType.FREEFORM
+
+                                if (firstChange.changedToDown()) {
+                                    firstChange.consume()
+                                    inkingEngine.startStroke(firstChange.position, firstChange.pressure)
+                                } else if (firstChange.pressed) {
+                                    firstChange.consume()
+                                    // Process historical coalesced events if available for zero-latency tracking
+                                    @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+                                    val historical = firstChange.historical
+                                    if (historical.isNotEmpty()) {
+                                        for (h in historical) {
+                                            inkingEngine.continueStroke(h.position, 1f)
+                                        }
                                     }
-                                    whiteboardStrokes.add(
-                                        DrawingStroke(
-                                            points = currentStrokePoints,
-                                            color = activePenColor.copy(alpha = alpha),
-                                            strokeWidth = activePenSize,
-                                            type = strokeT
-                                        )
-                                    )
-                                    currentStrokePoints = emptyList()
-                                } else {
-                                    currentStrokePoints = emptyList()
+                                    inkingEngine.continueStroke(firstChange.position, firstChange.pressure)
+                                } else if (!firstChange.pressed) {
+                                    firstChange.consume()
+                                    inkingEngine.endStroke()
                                 }
                             }
-                        )
+                        }
                     }
             ) {
-                // Draw completed strokes
-                whiteboardStrokes.forEach { stroke ->
-                    drawPath(
-                        path = stroke.path,
-                        color = stroke.color,
-                        style = Stroke(
-                            width = stroke.strokeWidth,
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round
-                        )
-                    )
-                }
-                // Draw current stroke
-                if (currentStrokePoints.size >= 2) {
-                    val alpha = if (penType == "Highlighter") highlighterAlpha else 1f
-                    val strokeT = when (shapeType) {
-                        "Circle" -> StrokeType.CIRCLE
-                        "Rectangle" -> StrokeType.RECTANGLE
-                        else -> StrokeType.FREEFORM
-                    }
-                    val tempStroke = DrawingStroke(
-                        points = currentStrokePoints,
-                        color = activePenColor.copy(alpha = alpha),
-                        strokeWidth = activePenSize,
-                        type = strokeT
-                    )
-                    drawPath(
-                        path = tempStroke.path,
-                        color = tempStroke.color,
-                        style = Stroke(
-                            width = tempStroke.strokeWidth,
-                            cap = StrokeCap.Round,
-                            join = StrokeJoin.Round
-                        )
-                    )
-                }
-                // Draw eraser indicator
-                eraserIndicatorPosition?.let { pos ->
-                    drawCircle(
-                        color = Color.Gray.copy(alpha = 0.5f),
-                        radius = activePenSize * 1.5f,
-                        center = pos
-                    )
-                }
+                // Reading trigger ensures re-draw when strokes change
+                @Suppress("UNUSED_VARIABLE")
+                val trigger = strokeUpdateTrigger
+                inkingEngine.renderTo(this)
             }
 
-            // ── Floating Draggable Toolbar ──
-            val defaultAlignment = when (whiteboardToolbarPosition) {
-                "LEFT" -> Alignment.CenterStart
-                "RIGHT" -> Alignment.CenterEnd
-                "TOP" -> Alignment.TopCenter
-                "BOTTOM" -> Alignment.BottomCenter
-                else -> Alignment.BottomEnd
-            }
-
-            val defaultPadding = when (whiteboardToolbarPosition) {
-                "LEFT" -> Modifier.padding(start = 16.dp)
-                "RIGHT" -> Modifier.padding(end = 16.dp)
-                "TOP" -> Modifier.padding(top = 80.dp)
-                "BOTTOM" -> Modifier.padding(bottom = 90.dp)
-                else -> Modifier.padding(end = 24.dp, bottom = 100.dp)
-            }
-
-            val activeToolIcon = when {
-                isEraserMode -> Icons.Outlined.CleaningServices
-                shapeType == "Circle" -> Icons.Outlined.Circle
-                shapeType == "Rectangle" -> Icons.Outlined.CropSquare
-                penType == "Highlighter" -> Icons.Outlined.Brush
-                else -> Icons.Outlined.Gesture
-            }
-
-            val isVertical = whiteboardToolbarPosition == "LEFT" || 
-                             whiteboardToolbarPosition == "RIGHT" || 
-                             whiteboardToolbarPosition == "FLOATING"
-
-            Surface(
-                modifier = Modifier
-                    .align(defaultAlignment)
-                    .then(defaultPadding)
-                    .offset {
-                        androidx.compose.ui.unit.IntOffset(
-                            toolbarOffset.x.roundToInt(),
-                            toolbarOffset.y.roundToInt()
-                        )
-                    }
-                    .wrapContentSize(),
-                shape = RoundedCornerShape(24.dp),
-                color = colorScheme.surfaceVariant,
-                border = BorderStroke(1.dp, colorScheme.outlineVariant),
-                shadowElevation = 10.dp
-            ) {
-                val contentBlock = @Composable {
-                    // Button 1: Main tool indicator (Toggle Expand/Collapse)
-                    IconButton(
-                        onClick = { isToolbarExpanded = !isToolbarExpanded },
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = colorScheme.primary.copy(alpha = 0.1f)
-                        )
-                    ) {
-                        Icon(
-                            imageVector = activeToolIcon,
-                            contentDescription = "Active Tool",
-                            tint = colorScheme.primary
-                        )
-                    }
-
-                    if (isToolbarExpanded) {
-                        // Divider
-                        if (isVertical) {
-                            HorizontalDivider(modifier = Modifier.width(24.dp), color = colorScheme.outlineVariant)
-                        } else {
-                            VerticalDivider(modifier = Modifier.height(24.dp), color = colorScheme.outlineVariant)
-                        }
-
-                        // Pen Button
-                        IconButton(
-                            onClick = { isEraserMode = false; penType = "Pen"; shapeType = "Freeform" },
-                            colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (!isEraserMode && penType == "Pen" && shapeType == "Freeform") colorScheme.primaryContainer else Color.Transparent
-                            )
-                        ) {
-                            Icon(
-                                Icons.Outlined.Gesture,
-                                contentDescription = "Standard Pen",
-                                tint = if (!isEraserMode && penType == "Pen" && shapeType == "Freeform") colorScheme.onPrimaryContainer else colorScheme.onSurface
-                            )
-                        }
-
-                        // Highlighter Button
-                        IconButton(
-                            onClick = { isEraserMode = false; penType = "Highlighter"; shapeType = "Freeform" },
-                            colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (!isEraserMode && penType == "Highlighter" && shapeType == "Freeform") colorScheme.primaryContainer else Color.Transparent
-                            )
-                        ) {
-                            Icon(
-                                Icons.Outlined.Brush,
-                                contentDescription = "Highlighter",
-                                tint = if (!isEraserMode && penType == "Highlighter" && shapeType == "Freeform") colorScheme.onPrimaryContainer else colorScheme.onSurface
-                            )
-                        }
-
-                        // Eraser Button
-                        IconButton(
-                            onClick = { isEraserMode = true },
-                            colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (isEraserMode) colorScheme.primaryContainer else Color.Transparent
-                            )
-                        ) {
-                            Icon(
-                                Icons.Outlined.CleaningServices,
-                                contentDescription = "Eraser",
-                                tint = if (isEraserMode) colorScheme.onPrimaryContainer else colorScheme.onSurface
-                            )
-                        }
-
-                        // Circle Button
-                        IconButton(
-                            onClick = { isEraserMode = false; penType = "Pen"; shapeType = "Circle" },
-                            colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (!isEraserMode && shapeType == "Circle") colorScheme.primaryContainer else Color.Transparent
-                            )
-                        ) {
-                            Icon(
-                                Icons.Outlined.Circle,
-                                contentDescription = "Draw Circle",
-                                tint = if (!isEraserMode && shapeType == "Circle") colorScheme.onPrimaryContainer else colorScheme.onSurface
-                            )
-                        }
-
-                        // Square/Rectangle Button
-                        IconButton(
-                            onClick = { isEraserMode = false; penType = "Pen"; shapeType = "Rectangle" },
-                            colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = if (!isEraserMode && shapeType == "Rectangle") colorScheme.primaryContainer else Color.Transparent
-                            )
-                        ) {
-                            Icon(
-                                Icons.Outlined.CropSquare,
-                                contentDescription = "Draw Rectangle",
-                                tint = if (!isEraserMode && shapeType == "Rectangle") colorScheme.onPrimaryContainer else colorScheme.onSurface
-                            )
-                        }
-
-                        // Divider
-                        if (isVertical) {
-                            HorizontalDivider(modifier = Modifier.width(24.dp), color = colorScheme.outlineVariant)
-                        } else {
-                            VerticalDivider(modifier = Modifier.height(24.dp), color = colorScheme.outlineVariant)
-                        }
-
-                        // Color presets selection
-                        val colors = listOf(
-                            if (isDarkMode) Color.White else Color.Black,
-                            Color.Red,
-                            Color(0xFF2196F3),
-                            Color(0xFF4CAF50)
-                        )
-                        colors.forEach { color ->
-                            val isColorSelected = activePenColor == color && !isEraserMode
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(CircleShape)
-                                    .background(color)
-                                    .border(
-                                        width = if (isColorSelected) 2.dp else 1.dp,
-                                        color = if (isColorSelected) colorScheme.primary else Color.Gray.copy(alpha = 0.5f),
-                                        shape = CircleShape
-                                    )
-                                    .clickable {
-                                        isEraserMode = false
-                                        activePenColor = color
-                                    }
-                            )
-                        }
-
-                        // Divider
-                        if (isVertical) {
-                            HorizontalDivider(modifier = Modifier.width(24.dp), color = colorScheme.outlineVariant)
-                        } else {
-                            VerticalDivider(modifier = Modifier.height(24.dp), color = colorScheme.outlineVariant)
-                        }
-
-                        // Brush thickness preset toggle
-                        val sizes = listOf(4f, 8f, 16f)
-                        sizes.forEach { size ->
-                            val isSizeSelected = activePenSize == size && !isEraserMode
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(CircleShape)
-                                    .background(if (isSizeSelected) colorScheme.primaryContainer else Color.Transparent)
-                                    .clickable {
-                                        activePenSize = size
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size((size / 2f + 4f).dp)
-                                        .clip(CircleShape)
-                                        .background(if (isSizeSelected) colorScheme.onPrimaryContainer else colorScheme.onSurface)
-                                )
-                            }
-                        }
-
-                        // Divider
-                        if (isVertical) {
-                            HorizontalDivider(modifier = Modifier.width(24.dp), color = colorScheme.outlineVariant)
-                        } else {
-                            VerticalDivider(modifier = Modifier.height(24.dp), color = colorScheme.outlineVariant)
-                        }
-
-                        // Clear button
-                        IconButton(onClick = { whiteboardStrokes.clear() }) {
-                            Icon(Icons.Outlined.Delete, contentDescription = "Clear All", tint = colorScheme.error)
-                        }
-
-                        // Exit button
-                        IconButton(onClick = { isWhiteBoardActive = false }) {
-                            Icon(Icons.Outlined.Close, contentDescription = "Exit Whiteboard", tint = colorScheme.error)
-                        }
-                    }
-                }
-
-                if (isVertical) {
-                    Column(
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .pointerInput(Unit) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    toolbarOffset = toolbarOffset + dragAmount
-                                }
-                            },
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        contentBlock()
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .pointerInput(Unit) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    toolbarOffset = toolbarOffset + dragAmount
-                                }
-                            },
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        contentBlock()
-                    }
-                }
-            }
+            // Modern Floating Capsule Toolbar
+            WhiteboardCapsuleToolbar(
+                activeTool = activeTool,
+                onToolSelected = { activeTool = it },
+                activeColor = activePenColor,
+                onColorSelected = { activePenColor = it },
+                activeWidth = activePenSize,
+                onWidthSelected = { activePenSize = it },
+                highlighterAlpha = highlighterAlpha,
+                onAlphaChanged = {
+                    highlighterAlpha = it
+                    settingsRepo.whiteboardHighlighterAlpha = it
+                },
+                onUndo = { inkingEngine.undo() },
+                onRedo = { inkingEngine.redo() },
+                onClearAll = { inkingEngine.clearAll() },
+                onClose = { isWhiteBoardActive = false },
+                isDarkMode = isDarkMode,
+                initialDockPosition = whiteboardToolbarPosition
+            )
         }
     }
 }
