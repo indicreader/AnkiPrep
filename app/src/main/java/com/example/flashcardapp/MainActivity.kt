@@ -77,11 +77,6 @@ import android.net.Uri
 import android.content.Intent
 import android.widget.Toast
 import android.app.Activity
-import com.google.android.gms.ads.MobileAds
-import com.google.android.gms.ads.AdRequest
-import com.google.android.gms.ads.LoadAdError
-import com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAd
-import com.google.android.gms.ads.rewardedinterstitial.RewardedInterstitialAdLoadCallback
 
 sealed class Screen {
     object DeckSelection : Screen()
@@ -118,13 +113,7 @@ sealed class Screen {
     ) : Screen()
 }
 
-// =========================================================================
-// GOOGLE ADMOB CONFIGURATION
-// Replace with your actual Ad Unit ID when ready for production.
-// Test Interstitial ID is: "ca-app-pub-3940256099942544/1033173712"
-// =========================================================================
-const val ADMOB_INTERSTITIAL_AD_UNIT_ID = "ca-app-pub-6846875306917122/8090484835"
-// =========================================================================
+
 
 class LocaleContextWrapper(base: Context) : ContextWrapper(base) {
     companion object {
@@ -148,44 +137,8 @@ class MainActivity : ComponentActivity() {
         super.attachBaseContext(wrappedContext)
     }
 
-    private var mInterstitialAd: RewardedInterstitialAd? = null
-    private var isAdLoading = false
-
-    fun loadInterstitialAd() {
-        if (com.example.flashcardapp.data.SettingsRepository.getInstance(this).isPremium) return
-        if (mInterstitialAd != null || isAdLoading) return
-        isAdLoading = true
-        val adRequest = AdRequest.Builder().build()
-        RewardedInterstitialAd.load(
-            this,
-            ADMOB_INTERSTITIAL_AD_UNIT_ID,
-            adRequest,
-            object : RewardedInterstitialAdLoadCallback() {
-                override fun onAdLoaded(rewardedInterstitialAd: RewardedInterstitialAd) {
-                    mInterstitialAd = rewardedInterstitialAd
-                    isAdLoading = false
-                    Log.d("AdMob", "Rewarded Interstitial Ad loaded successfully.")
-                }
-
-                override fun onAdFailedToLoad(loadAdError: LoadAdError) {
-                    Log.e("AdMob", "Rewarded Interstitial Ad failed to load: ${loadAdError.message}")
-                    mInterstitialAd = null
-                    isAdLoading = false
-                }
-            }
-        )
-    }
-
-    fun getInterstitialAd(): RewardedInterstitialAd? = mInterstitialAd
-
-    fun clearInterstitialAd() {
-        mInterstitialAd = null
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Ad module disabled until app is fully functional
-        // MobileAds.initialize(this) { loadInterstitialAd() }
         handleIntent(intent)
         setContent {
             val context = LocalContext.current
@@ -374,294 +327,28 @@ fun shimmerBrush(
     }
 }
 
-// ── Rotating mock ads shown when no preloaded real ad is available ────────────
-private data class MockAdContent(
-    val emoji: String,
-    val title: String,
-    val subtitle: String,
-    val benefits: List<String>,
-    val ctaLabel: String,
-    val gradientStart: Color,
-    val gradientEnd: Color,
-    val accentColor: Color
-)
-
-private val MOCK_ADS = listOf(
-    MockAdContent(
-        emoji = "🎮",
-        title = "WordQuest: Daily Puzzle",
-        subtitle = "Train your brain & expand your vocabulary",
-        benefits = listOf(
-            "★ Over 5,000 Challenging Levels",
-            "★ Learn New Words & Meanings Daily",
-            "★ Fun Minigames & Brain Teasers",
-            "★ Play Offline Anytime, Anywhere",
-            "★ Over 10 Million Players Globally"
-        ),
-        ctaLabel = "PLAY FREE NOW",
-        gradientStart = Color(0xFF0F172A), gradientEnd = Color(0xFF1E3A8A),
-        accentColor = Color(0xFF3B82F6)
-    ),
-    MockAdContent(
-        emoji = "📚",
-        title = "ReadFast: Speed Reading",
-        subtitle = "Read 3× faster with proven RSVP technique",
-        benefits = listOf(
-            "★ Personalized reading speed goals",
-            "★ 1,000+ curated book summaries",
-            "★ Daily streak & comprehension tests",
-            "★ Offline mode for commuters",
-            "★ Trusted by 2M+ students"
-        ),
-        ctaLabel = "START READING FREE",
-        gradientStart = Color(0xFF064E3B), gradientEnd = Color(0xFF065F46),
-        accentColor = Color(0xFF10B981)
-    ),
-    MockAdContent(
-        emoji = "🧠",
-        title = "BrainBoost: Memory Trainer",
-        subtitle = "Sharpen memory with science-backed exercises",
-        benefits = listOf(
-            "★ 20-minute daily brain workout",
-            "★ Memory, focus & processing speed",
-            "★ Gamified challenges & leaderboards",
-            "★ Neuroscientist-designed curriculum",
-            "★ 4.8 ★ on Play Store (500K reviews)"
-        ),
-        ctaLabel = "TRAIN YOUR BRAIN",
-        gradientStart = Color(0xFF4C1D95), gradientEnd = Color(0xFF5B21B6),
-        accentColor = Color(0xFF7C3AED)
-    ),
-    MockAdContent(
-        emoji = "✈️",
-        title = "LinguaLeap: Language Fast",
-        subtitle = "Learn Spanish, French & 12 more languages",
-        benefits = listOf(
-            "★ Conversational fluency in 90 days",
-            "★ AI pronunciation feedback",
-            "★ Native-speaker audio lessons",
-            "★ 5-min bite-sized daily lessons",
-            "★ Certificates recognized worldwide"
-        ),
-        ctaLabel = "LEARN FOR FREE",
-        gradientStart = Color(0xFF7C2D12), gradientEnd = Color(0xFF9A3412),
-        accentColor = Color(0xFFF97316)
-    )
-)
-
+@Deprecated("Ads removed completely")
 @Composable
 fun FullscreenMockAd(
     onAdDismissed: () -> Unit,
-    isQuizReady: Boolean,
-    adIndex: Int = 0  // caller passes session-based index for rotation
+    isQuizReady: Boolean = true,
+    adIndex: Int = 0
 ) {
-    val ad = MOCK_ADS[adIndex % MOCK_ADS.size]
-    var countdown by remember { mutableStateOf(3) }
     LaunchedEffect(Unit) {
-        while (countdown > 0) {
-            kotlinx.coroutines.delay(1000)
-            countdown--
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(ad.gradientStart, ad.gradientEnd)
-                )
-            )
-            .padding(24.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = "Sponsored",
-                color = Color.White.copy(alpha = 0.8f),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
-        if (countdown > 0) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .background(Color.Black.copy(alpha = 0.4f), CircleShape)
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            ) {
-                Text(
-                    text = "Skip in $countdown",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium
-                )
-            }
-        } else {
-            IconButton(
-                onClick = onAdDismissed,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .background(Color.White.copy(alpha = 0.2f), CircleShape)
-                    .size(36.dp)
-            ) {
-                Text(
-                    text = "✕",
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(ad.accentColor, ad.accentColor.copy(alpha = 0.7f))
-                        ),
-                        CircleShape
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = ad.emoji,
-                    color = Color.White,
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = ad.title,
-                    color = Color.White,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = ad.subtitle,
-                    color = Color.White.copy(alpha = 0.7f),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.08f)),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    ad.benefits.forEach { benefit ->
-                        Text(
-                            text = benefit,
-                            color = Color.White.copy(alpha = 0.9f),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-            }
-
-            Button(
-                onClick = { /* App Store CTA */ },
-                colors = ButtonDefaults.buttonColors(containerColor = ad.accentColor),
-                contentPadding = PaddingValues(horizontal = 32.dp, vertical = 12.dp),
-                shape = RoundedCornerShape(24.dp),
-                modifier = Modifier.fillMaxWidth(0.8f)
-            ) {
-                Text(
-                    text = ad.ctaLabel,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 16.dp)
-        ) {
-            Text(
-                text = if (isQuizReady) "Quiz loaded and ready!" else "Generating quiz questions...",
-                color = Color.White.copy(alpha = 0.5f),
-                style = MaterialTheme.typography.labelMedium
-            )
-        }
+        onAdDismissed()
     }
 }
 
-
+@Deprecated("Ads removed completely")
 @Composable
 fun RealAdmobInterstitialAd(
     onAdDismissed: () -> Unit,
-    isQuizReady: Boolean,
-    adSessionKey: Long,   // unique per quiz launch — forces LaunchedEffect to re-fire
-    adIndex: Int = 0      // rotation index for fallback mock ads
+    isQuizReady: Boolean = true,
+    adSessionKey: Long = 0L,
+    adIndex: Int = 0
 ) {
-    val context = LocalContext.current
-    val activity = context as? MainActivity
-    val preloadedAd = activity?.getInterstitialAd()
-
-    if (preloadedAd != null) {
-        // KEY = adSessionKey ensures show() fires for every new quiz session,
-        // even if the same InterstitialAd object is still in memory.
-        LaunchedEffect(adSessionKey) {
-            preloadedAd.fullScreenContentCallback = object : com.google.android.gms.ads.FullScreenContentCallback() {
-                override fun onAdDismissedFullScreenContent() {
-                    activity.clearInterstitialAd()
-                    activity.loadInterstitialAd() // Preload next
-                    onAdDismissed()
-                }
-                override fun onAdFailedToShowFullScreenContent(error: com.google.android.gms.ads.AdError) {
-                    activity.clearInterstitialAd()
-                    activity.loadInterstitialAd() // Preload next
-                    onAdDismissed()
-                }
-            }
-            if (activity != null) {
-                preloadedAd.show(activity) { _ -> }
-            }
-        }
-
-        // Black screen placeholder while the ad activity takes over
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(color = Color(0xFFFFD700))
-        }
-    } else {
-        // Fallback to rotating mock ad when real ad isn't ready
-        FullscreenMockAd(
-            onAdDismissed = {
-                activity?.loadInterstitialAd()
-                onAdDismissed()
-            },
-            isQuizReady = isQuizReady,
-            adIndex = adIndex
-        )
+    LaunchedEffect(Unit) {
+        onAdDismissed()
     }
 }
 

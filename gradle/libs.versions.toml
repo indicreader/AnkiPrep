@@ -1,0 +1,83 @@
+[versions]
+agp = "8.2.2"
+kotlin = "1.9.22"
+ksp = "1.9.22-1.0.17"
+compileSdk = "34"
+minSdk = "26"
+targetSdk = "34"
+
+# Dependencies requested for update & deduplication
+composeBom = "2024.06.00"
+coroutines = "1.8.1"
+playServicesAds = "23.3.0"
+
+# AndroidX & Jetpack
+coreKtx = "1.12.0"
+lifecycleRuntimeKtx = "2.7.0"
+activityCompose = "1.8.2"
+navigationCompose = "2.7.7"
+room = "2.6.1"
+documentfile = "1.0.1"
+work = "2.9.0"
+
+# UI & Utilities
+material = "1.12.0"
+coil = "2.6.0"
+jsoup = "1.17.2"
+gson = "2.10.1"
+okhttp = "4.12.0"
+quickjs = "0.9.2"
+mlkitTextRecognition = "16.0.0"
+
+# Testing
+junit = "4.13.2"
+androidxJunit = "1.1.5"
+espresso = "3.5.1"
+
+[libraries]
+material = { module = "com.google.android.material:material", version.ref = "material" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
+androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
+androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
+
+# Compose BOM & UI
+androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+androidx-compose-ui = { module = "androidx.compose.ui:ui" }
+androidx-compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
+androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+androidx-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+
+# Play Services Ads
+play-services-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "playServicesAds" }
+
+# Room
+androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+androidx-room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+
+# Coroutines
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+
+# Third Party
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+quickjs-android = { module = "app.cash.quickjs:quickjs-android", version.ref = "quickjs" }
+mlkit-text-recognition = { module = "com.google.mlkit:text-recognition", version.ref = "mlkitTextRecognition" }
+
+# Architecture components
+androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
+androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+
+# Testing
+junit = { module = "junit:junit", version.ref = "junit" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxJunit" }
+androidx-test-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }

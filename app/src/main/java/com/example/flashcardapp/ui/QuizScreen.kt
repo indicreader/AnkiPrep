@@ -662,8 +662,19 @@ fun QuizScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val subjectOrFileName = remember(currentQuestion?.deckHierarchy, deckName) {
+                        val hierarchy = currentQuestion?.deckHierarchy?.trim()
+                        if (!hierarchy.isNullOrEmpty() && hierarchy != "Default") {
+                            hierarchy
+                        } else {
+                            deckName
+                        }
+                    }
                     Text(
-                        text = "QUESTION ${sessionState.currentQuestionIndex + 1} OF ${sessionState.questions.size}",
+                        text = subjectOrFileName,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = colorScheme.primary,
                         letterSpacing = 1.sp
@@ -759,7 +770,7 @@ fun QuizScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Question ${sessionState.currentQuestionIndex + 1}/${sessionState.questions.size}",
+                                    text = "Question ${sessionState.currentQuestionIndex + 1}",
                                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                                     color = colorScheme.primary
                                 )

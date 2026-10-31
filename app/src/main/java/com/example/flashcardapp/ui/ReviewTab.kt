@@ -1572,40 +1572,6 @@ fun ReviewTab(
                                     }
                                 }
 
-                                val iconBgColor = when (currentDeckMode) {
-                                    McqSessionMode.PRACTICE -> MaterialTheme.colorScheme.primaryContainer
-                                    McqSessionMode.REVISION -> Color(0xFFFF9800)
-                                    McqSessionMode.TEST -> Color(0xFF2196F3)
-                                    else -> {
-                                        if (hasChildren) MaterialTheme.colorScheme.primaryContainer 
-                                        else MaterialTheme.colorScheme.secondaryContainer
-                                    }
-                                }
-                                val iconTintColor = when (currentDeckMode) {
-                                    McqSessionMode.PRACTICE -> MaterialTheme.colorScheme.onPrimaryContainer
-                                    McqSessionMode.REVISION -> Color.White
-                                    McqSessionMode.TEST -> Color.White
-                                    else -> {
-                                        if (hasChildren) MaterialTheme.colorScheme.onPrimaryContainer 
-                                        else MaterialTheme.colorScheme.onSecondaryContainer
-                                    }
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(iconBgColor),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = if (hasChildren) Icons.Default.Menu else Icons.AutoMirrored.Filled.List,
-                                        contentDescription = null,
-                                        tint = iconTintColor,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-
-                                Spacer(Modifier.width(10.dp))
 
                                 val totalCards = getRecursiveCardCount(node)
                                 val practiced = getPracticedCount(node, attemptsToday)

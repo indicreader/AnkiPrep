@@ -23,10 +23,6 @@
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
 
-        <meta-data
-            android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-6846875306917122~9888257018" />
-        
         <activity
             android:name="com.example.flashcardapp.MainActivity"
             android:exported="true"
