@@ -1186,25 +1186,34 @@ fun ReviewTab(
                         Text("${decks.size} deck${if (decks.size == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { onDarkModeToggle(!isDarkMode) }) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Theme Mode Toggle (Moon / Sun)
+                    IconButton(
+                        onClick = { onDarkModeToggle(!isDarkMode) },
+                        modifier = Modifier.size(48.dp)
+                    ) {
                         Icon(
                             imageVector = if (isDarkMode) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
                             contentDescription = if (isDarkMode) "Light Mode" else "Dark Mode",
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
-                    IconButton(onClick = onImportApkgClicked) { Icon(Icons.Default.Add, "Import APKG", tint = MaterialTheme.colorScheme.primary) }
-                    IconButton(onClick = onImportCsvClicked) { Icon(Icons.Default.Share, "Import CSV", tint = MaterialTheme.colorScheme.primary) }
-                    IconButton(onClick = { showPomodoroBar = !showPomodoroBar }) {
+
+                    // Study Session / Progress Timer
+                    IconButton(
+                        onClick = { showPomodoroBar = !showPomodoroBar },
+                        modifier = Modifier.size(48.dp)
+                    ) {
                         Icon(
                             imageVector = Icons.Default.HourglassTop,
-                            contentDescription = "Pomodoro Timer",
-                            tint = if (showPomodoroBar) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                            contentDescription = "Session Timer",
+                            tint = if (showPomodoroBar) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.size(24.dp)
                         )
-                    }
-                    if (isAnkiInstalled && hasPermission) {
-                        IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, "Refresh", tint = MaterialTheme.colorScheme.primary) }
                     }
                 }
             }
