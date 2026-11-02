@@ -33,6 +33,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -911,6 +914,7 @@ fun ReviewTab(
     }
 
     var selectedNodePaths by remember { mutableStateOf(setOf<String>()) }
+    val haptic = LocalHapticFeedback.current
     var selectedFilterTags by remember { mutableStateOf(setOf<String>()) }
     var isTagFilterBarExpanded by remember { mutableStateOf(false) }
 
@@ -1392,6 +1396,7 @@ fun ReviewTab(
                             else -> MaterialTheme.colorScheme.surface
                         }
 
+                        val isNodeSelected = selectedNodePaths.contains(node.fullPath)
                         val isBeingDragged = draggingNodePath == node.fullPath
                         val isSibling = draggingNodePath != null && activeSiblingPaths.contains(node.fullPath)
                         val sibIdx = if (isSibling) activeSiblingPaths.indexOf(node.fullPath) else -1
@@ -1447,13 +1452,15 @@ fun ReviewTab(
                                 },
                             shape = MaterialTheme.shapes.medium,
                             colors = CardDefaults.cardColors(
-                                containerColor = if (isBeingDragged) {
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isDarkMode) 0.85f else 0.95f)
-                                } else cardContainerColor
+                                containerColor = when {
+                                    isBeingDragged -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isDarkMode) 0.85f else 0.95f)
+                                    isNodeSelected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isDarkMode) 0.35f else 0.5f)
+                                    else -> cardContainerColor
+                                }
                             ),
                             border = BorderStroke(
-                                if (isBeingDragged) 2.dp else 1.dp,
-                                if (isBeingDragged) {
+                                if (isBeingDragged || isNodeSelected) 2.dp else 1.dp,
+                                if (isBeingDragged || isNodeSelected) {
                                     SolidColor(MaterialTheme.colorScheme.primary)
                                 } else {
                                     Brush.linearGradient(
@@ -1533,24 +1540,29 @@ fun ReviewTab(
                                     )
                                 }
 
-                                val isNodeSelected = selectedNodePaths.contains(node.fullPath)
-                                Checkbox(
-                                    checked = isNodeSelected,
-                                    onCheckedChange = { checked ->
-                                        val currentSelected = selectedNodePaths.toMutableSet()
-                                        fun toggleRecursive(n: DeckNode, add: Boolean) {
-                                            if (add) currentSelected.add(n.fullPath) else currentSelected.remove(n.fullPath)
-                                            n.children.forEach { child -> toggleRecursive(child, add) }
-                                        }
-                                        toggleRecursive(node, checked)
-                                        selectedNodePaths = currentSelected
-                                    },
-                                    colors = CheckboxDefaults.colors(
-                                        checkedColor = MaterialTheme.colorScheme.primary,
-                                        uncheckedColor = MaterialTheme.colorScheme.outline
-                                    ),
-                                    modifier = Modifier.padding(horizontal = 2.dp)
-                                )
+                                val toggleNodeSelection: () -> Unit = {
+                                    val currentSelected = selectedNodePaths.toMutableSet()
+                                    fun toggleRecursive(n: DeckNode, add: Boolean) {
+                                        if (add) currentSelected.add(n.fullPath) else currentSelected.remove(n.fullPath)
+                                        n.children.forEach { child -> toggleRecursive(child, add) }
+                                    }
+                                    toggleRecursive(node, !isNodeSelected)
+                                    selectedNodePaths = currentSelected
+                                }
+
+                                if (selectedNodePaths.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = toggleNodeSelection,
+                                        modifier = Modifier.size(28.dp).padding(horizontal = 2.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isNodeSelected) Icons.Default.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                                            contentDescription = if (isNodeSelected) "Selected" else "Not Selected",
+                                            tint = if (isNodeSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
 
                                 if (hasChildren) {
                                     IconButton(
@@ -1579,11 +1591,23 @@ fun ReviewTab(
                                 Column(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .clickable {
-                                            if (hasChildren && searchQuery.isBlank()) {
-                                                expandedNodes = if (isExpanded) expandedNodes - node.fullPath else expandedNodes + node.fullPath
+                                        .combinedClickable(
+                                            onClick = {
+                                                if (selectedNodePaths.isNotEmpty()) {
+                                                    toggleNodeSelection()
+                                                } else {
+                                                    if (hasChildren && searchQuery.isBlank()) {
+                                                        expandedNodes = if (isExpanded) expandedNodes - node.fullPath else expandedNodes + node.fullPath
+                                                    } else {
+                                                        onSelectDeck(playableDeck)
+                                                    }
+                                                }
+                                            },
+                                            onLongClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                toggleNodeSelection()
                                             }
-                                        }
+                                        )
                                 ) {
                                     Text(
                                         text = node.shortName,
@@ -1622,44 +1646,46 @@ fun ReviewTab(
                                     )
                                 }
 
-                                IconButton(
-                                    onClick = { onSelectDeck(playableDeck) },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(Icons.Default.PlayArrow, "Study", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                                }
-                                IconButton(
-                                    onClick = { settingsNode = node },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(Icons.Default.Settings, "Settings", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
-                                }
-                                val sibResult = findSiblingsAndIndex(tree, node.fullPath)
-                                val canMoveUp = (sibResult?.second ?: 0) > 0
-                                val canMoveDown = sibResult?.let { (sibs, idx) -> idx < sibs.lastIndex } ?: false
-
-                                Box {
+                                if (selectedNodePaths.isEmpty()) {
                                     IconButton(
-                                        onClick = { menuExpanded = true },
+                                        onClick = { onSelectDeck(playableDeck) },
                                         modifier = Modifier.size(32.dp)
                                     ) {
-                                        Icon(Icons.Default.MoreVert, "Options", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.PlayArrow, "Study", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                                     }
-                                    DeckOptionsMenu(
-                                        node = node, expanded = menuExpanded,
-                                        onDismiss = { menuExpanded = false },
-                                        onStudy = { onSelectDeck(playableDeck) },
-                                        onAddCard = { addCardNode = node },
-                                        onEditCards = { onSelectDeck(playableDeck) },
-                                        onRename = { renameNode = node },
-                                        onClearProgress = { clearNode = node },
-                                        onDelete = { deleteNode = node },
-                                        onExport = { onExportDeck(playableDeck) },
-                                        onMoveUp = if (canMoveUp) { { moveDeckInTree(node, -1) } } else null,
-                                        onMoveDown = if (canMoveDown) { { moveDeckInTree(node, 1) } } else null,
-                                        onClubIntoAnother = { singleClubNode = node },
-                                        onMockExam = { mockExamNode = node }
-                                    )
+                                    IconButton(
+                                        onClick = { settingsNode = node },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Settings, "Settings", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+                                    }
+                                    val sibResult = findSiblingsAndIndex(tree, node.fullPath)
+                                    val canMoveUp = (sibResult?.second ?: 0) > 0
+                                    val canMoveDown = sibResult?.let { (sibs, idx) -> idx < sibs.lastIndex } ?: false
+
+                                    Box {
+                                        IconButton(
+                                            onClick = { menuExpanded = true },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.MoreVert, "Options", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                                        }
+                                        DeckOptionsMenu(
+                                            node = node, expanded = menuExpanded,
+                                            onDismiss = { menuExpanded = false },
+                                            onStudy = { onSelectDeck(playableDeck) },
+                                            onAddCard = { addCardNode = node },
+                                            onEditCards = { onSelectDeck(playableDeck) },
+                                            onRename = { renameNode = node },
+                                            onClearProgress = { clearNode = node },
+                                            onDelete = { deleteNode = node },
+                                            onExport = { onExportDeck(playableDeck) },
+                                            onMoveUp = if (canMoveUp) { { moveDeckInTree(node, -1) } } else null,
+                                            onMoveDown = if (canMoveDown) { { moveDeckInTree(node, 1) } } else null,
+                                            onClubIntoAnother = { singleClubNode = node },
+                                            onMockExam = { mockExamNode = node }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -2476,4 +2502,3 @@ private fun StatCard(
         }
     }
 }
-

@@ -1291,8 +1291,8 @@ class AnkiDataRepository(
         AppDatabase.getInstance(context).withTransaction {
             val allDecks = deckDao.getAllDecksOnce().toMutableList()
             for (sourcePath in deckPaths) {
-                if (sourcePath == cleanMasterName || sourcePath.startsWith("$cleanMasterName::")) {
-                    continue // Skip nesting inside itself or its children
+                if (sourcePath == cleanMasterName || cleanMasterName.startsWith("$sourcePath::") || sourcePath.startsWith("$cleanMasterName::")) {
+                    continue // Skip nesting inside itself or cyclic descendant nesting
                 }
                 val sourceDeck = allDecks.firstOrNull { it.fullPath == sourcePath } ?: continue
                 val newSourceFullPath = "${masterDeck.fullPath}::${sourceDeck.name}"
