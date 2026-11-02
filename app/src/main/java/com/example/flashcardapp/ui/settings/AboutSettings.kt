@@ -31,6 +31,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.flashcardapp.data.SettingsRepository
+import com.example.flashcardapp.data.updater.AppUpdateManager
+import com.example.flashcardapp.data.updater.UpdateStatus
+import kotlinx.coroutines.launch
 
 /**
  * Level 1 Screen for About & Legal category.
@@ -88,7 +91,12 @@ fun AboutSubCategoryScreen(
 fun AboutUsScreen() {
     val context = LocalContext.current
     val repository = remember { SettingsRepository.getInstance(context) }
+    val updateManager = remember { AppUpdateManager(context) }
+    val coroutineScope = rememberCoroutineScope()
     var isPremium by remember { mutableStateOf(repository.isPremium) }
+
+    val (currentVersionName, currentVersionCode) = remember { updateManager.getCurrentAppVersion() }
+    var updateStatus by remember { mutableStateOf<UpdateStatus>(UpdateStatus.Idle) }
 
     var tapCount by remember { mutableStateOf(0) }
     var lastTapTime by remember { mutableStateOf(0L) }
@@ -139,7 +147,7 @@ fun AboutUsScreen() {
                 )
 
                 Text(
-                    text = "Version 5.8 (Build 172)",
+                    text = "Version $currentVersionName (Build $currentVersionCode)",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold
@@ -151,6 +159,258 @@ fun AboutUsScreen() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
                 )
+            }
+        }
+
+        // In-App Update Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.SystemUpdate,
+                        contentDescription = "App Update",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Check for Updates",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Download and install updates directly from GitHub",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                when (val status = updateStatus) {
+                    is UpdateStatus.Idle -> {
+                        Button(
+                            onClick = {
+                                updateStatus = UpdateStatus.Checking
+                                coroutineScope.launch {
+                                    updateStatus = updateManager.checkForUpdates()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Check for Updates Now", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    is UpdateStatus.Checking -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Text(
+                                text = "Checking for latest release...",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    is UpdateStatus.UpToDate -> {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "You are on the latest version ($currentVersionName)!",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                updateStatus = UpdateStatus.Checking
+                                coroutineScope.launch {
+                                    updateStatus = updateManager.checkForUpdates()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Check Again")
+                        }
+                    }
+                    is UpdateStatus.UpdateAvailable -> {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.NewReleases,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "New Update Available: v${status.latestVersion}",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
+                                if (status.releaseNotes.isNotBlank()) {
+                                    Text(
+                                        text = status.releaseNotes,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f),
+                                        maxLines = 4
+                                    )
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                updateStatus = UpdateStatus.Downloading(0)
+                                coroutineScope.launch {
+                                    val result = updateManager.downloadApk(
+                                        downloadUrl = status.downloadUrl,
+                                        apkFileName = status.apkFileName,
+                                        onProgress = { progress ->
+                                            updateStatus = UpdateStatus.Downloading(progress)
+                                        }
+                                    )
+                                    result.onSuccess { apkFile ->
+                                        updateStatus = UpdateStatus.ReadyToInstall(apkFile)
+                                        updateManager.triggerInstall(apkFile)
+                                    }.onFailure { error ->
+                                        updateStatus = UpdateStatus.Error(error.localizedMessage ?: "Download failed")
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Download & Install v${status.latestVersion}", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    is UpdateStatus.Downloading -> {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Downloading APK update...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "${status.progressPercent}%",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            LinearProgressIndicator(
+                                progress = { status.progressPercent / 100f },
+                                modifier = Modifier.fillMaxWidth().height(6.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        }
+                    }
+                    is UpdateStatus.ReadyToInstall -> {
+                        Button(
+                            onClick = {
+                                updateManager.triggerInstall(status.apkFile)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                        ) {
+                            Icon(Icons.Default.InstallMobile, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Install Downloaded Update", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                    is UpdateStatus.Error -> {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Error: ${status.message}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                updateStatus = UpdateStatus.Checking
+                                coroutineScope.launch {
+                                    updateStatus = updateManager.checkForUpdates()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Retry Update Check")
+                        }
+                    }
+                }
             }
         }
 
