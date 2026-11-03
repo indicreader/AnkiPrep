@@ -122,10 +122,20 @@ To achieve the highest knowledge retention and peak exam readiness, AnkiPrep is 
 - **Mixed Content & Delimiters:** Seamlessly recognizes both inline equations (`$x^2 + y^2 = r^2$`, `\(...\)`) and full display blocks (`$$...$$`, `\[...\]`).
 - **Theme-Aware Dynamic Colors:** Equations adapt their stroke colors automatically across AMOLED Black, Cyber-Mint, and Light Mode without needing re-parsing.
 
-### 9. Customization, Themes & Direct In-App Updates
-- **Theme Diversity:** Cyber-Mint Dark, Pure AMOLED Black, Warm Light, Emerald, and Ocean palettes.
+### 9. Key-Driven Exam Theme Engine & Custom Theme Studio (FEAT-13-15)
+- **Authentic Exam Simulation Palettes:** Real-world exam test interface simulations:
+  - **TCS iON Console:** Matches official SSC CGL/CHSL, Railway RRB, and Banking interfaces (TCS Green answered, Orange unanswered, Violet flagged for review, 4dp crisp radius).
+  - **NTA Console:** Matches official NEET, JEE, and CUET exam software (distinctive green/red/purple status chips, 6dp corner radius).
+  - **Tactical Dark & Cyber-Mint:** Ergonomic dark modes built for high-contrast nighttime revision.
+- **Interactive Theme Studio:** Located under **Settings → Appearance → Theme Studio**:
+  - **Live Question Widget Preview:** Preview active question cards, status badges, and TeX equations in real-time as you tweak theme properties.
+  - **Geometry & Elevation Customization:** Adjust button corner radii (0dp to 24dp) and elevation for tactile touch feedback.
+  - **Custom User Themes:** Build, save, apply, and delete personalized palettes persisted locally via local storage.
+
+### 10. Customization, Typography & Direct In-App Updates
 - **Typography & Font Uploads:** Upload your own custom `.ttf` or `.otf` fonts for high-readability study typography.
 - **Direct In-App Updates:** Check for updates and download new release APKs directly from **Settings → About Us** with automated FileProvider installation.
+- **"What's New" Changelog:** Automatically displays highlights and new feature walkthroughs on first launch after an update.
 
 ---
 
