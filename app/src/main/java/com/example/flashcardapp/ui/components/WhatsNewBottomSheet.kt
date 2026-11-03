@@ -10,18 +10,17 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.flashcardapp.data.ChangelogProvider
+import com.example.flashcardapp.data.ReleaseHighlightItem
 
-data class ReleaseFeatureHighlight(
-    val title: String,
-    val description: String,
-    val tag: String = "NEW"
-)
+typealias ReleaseFeatureHighlight = ReleaseHighlightItem
 
 /**
  * First-Launch What's New modal sheet highlighting the latest updates and engine upgrades.
@@ -32,24 +31,7 @@ fun WhatsNewBottomSheet(
     versionName: String,
     onDismiss: () -> Unit
 ) {
-    val highlights = listOf(
-        ReleaseFeatureHighlight(
-            title = "Smooth Math & LaTeX Engine",
-            description = "Native offline LaTeX equation rendering with instant LRU caching. Quantitative questions and fractions render with zero layout jitter."
-        ),
-        ReleaseFeatureHighlight(
-            title = "Tukke / Educated Guess Mode",
-            description = "Tag questions as educated guesses during review. Correct guesses automatically receive an FSRS retention penalty to prevent false mastery."
-        ),
-        ReleaseFeatureHighlight(
-            title = "Deck-Wise Accuracy Analytics",
-            description = "Track review performance by deck with automatic live updates on deck renames and clear color-coded accuracy tiers (Strong, Moderate, Focus Needed)."
-        ),
-        ReleaseFeatureHighlight(
-            title = "Streamlined Manage Decks Header",
-            description = "Pruned obsolete toolbar actions with minimum 48dp accessible touch targets for one-tap dark/light toggle and study timer."
-        )
-    )
+    val release = remember(versionName) { ChangelogProvider.getReleaseForVersion(versionName) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -87,7 +69,7 @@ fun WhatsNewBottomSheet(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Version $versionName",
+                        text = "Version ${release.versionName} • ${release.title}",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -100,7 +82,7 @@ fun WhatsNewBottomSheet(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.weight(1f, fill = false)
             ) {
-                items(highlights) { item ->
+                items(release.highlights) { item ->
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)

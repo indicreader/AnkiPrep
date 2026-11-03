@@ -224,6 +224,24 @@ class MainActivity : ComponentActivity() {
                             settingsRepo.fontFamilyType = it
                         }
                     )
+
+                    val updateManager = remember { com.example.flashcardapp.data.updater.AppUpdateManager(context) }
+                    val (appVersionName, appVersionCode) = remember { updateManager.getCurrentAppVersion() }
+                    val whatsNewPrefs = remember { context.getSharedPreferences("whats_new_prefs", android.content.Context.MODE_PRIVATE) }
+                    var showWhatsNew by remember {
+                        val lastSeenCode = whatsNewPrefs.getLong("last_seen_version_code", 0L)
+                        mutableStateOf(appVersionCode > lastSeenCode)
+                    }
+
+                    if (showWhatsNew) {
+                        com.example.flashcardapp.ui.components.WhatsNewBottomSheet(
+                            versionName = appVersionName,
+                            onDismiss = {
+                                whatsNewPrefs.edit().putLong("last_seen_version_code", appVersionCode).apply()
+                                showWhatsNew = false
+                            }
+                        )
+                    }
                 }
             }
         }
