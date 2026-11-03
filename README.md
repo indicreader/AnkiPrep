@@ -4,7 +4,9 @@
 [![Latest Release](https://img.shields.io/github/v/release/indicreader/AnkiPrep?color=00B4D8&label=Latest%20Release)](https://github.com/indicreader/AnkiPrep/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-**AnkiPrep** is a high-performance, offline-first smart flashcard application engineered for high-density multiple-choice question (MCQ) preparation, competitive exam practice, and active recall. Built natively using **Jetpack Compose**, **Kotlin Coroutines**, and **Room Database**, AnkiPrep allows aspirants and students to import comprehensive study materials from standard flashcards (`.apkg`), spreadsheets (`.csv`), data dumps (`.json`), digital books (`.epub`), and exam papers (`.pdf`) into a structured study environment.
+**AnkiPrep** is an offline-first, high-performance smart flashcard and active recall learning ecosystem engineered specifically for competitive examination aspirants and serious students. Built natively using modern Android standards (**Kotlin**, **Jetpack Compose**, **Coroutines**, and **Room Database**), AnkiPrep transforms massive question banks into structured, interactive multiple-choice quizzes (MCQs), flashcards, and timed mock tests.
+
+Whether you are preparing for UPSC, State PSCs, SSC, Banking, Railways, NEET, JEE, or University exams, AnkiPrep allows you to ingest study material from Anki packages (`.apkg`), spreadsheets (`.csv`), data dumps (`.json`), digital books (`.epub`), and past-year exam question papers (`.pdf`) directly into a clean, distraction-free study space.
 
 <p align="center">
   <img src="release/mockups/dashboard_mockup.png" width="31%" alt="Dashboard Screen" />
@@ -14,26 +16,118 @@
 
 ---
 
-## ⚡ Key Features
+## 🎯 How the App Is Intended to Be Used
 
-- **🚀 High-Performance Streaming Ingestion**: Parses large files (1,000+ questions) seamlessly using streaming `BufferedReader` (for CSV) and native `JsonReader` (for JSON) on `Dispatchers.IO` with chunked atomic database transactions and real-time progress indicators.
-- **🎯 Offline MCQ Engine**: Generates multiple-choice options, distractors, and randomized order offline from source cards or semantically similar deck questions.
-- **📈 Adaptive Spaced Repetition**: Study with adaptive algorithms including **FSRS (Free Spaced Repetition Scheduler)**, 5-box Leitner progression, and traditional SRS interval scheduling.
-- **📚 Multi-Format Ingestion**: Supports `.csv`, `.json`, Anki `.apkg`, chapter-segmented `.epub` books, multi-column exam `.pdf` files, and `.zip` archives.
-- **🌿 Claymorphic Spine Metaphor**: Visually tracks and displays deck mastery via color-coded, dynamic spine depth indicators.
-- **🎨 Custom Theming & Typography**: Light palettes (Emerald, Ocean, Sunset), pure AMOLED Black mode, Cyber-Mint Dark mode, dynamic typography scaling, and custom `.ttf`/`.otf` font uploads.
-- **🌐 Multilingual Localization**: Built-in support for English, Hindi (हिन्दी), Tamil (தமிழ்), Telugu (తెలుగు), Kannada (ಕನ್ನಡ), and Marathi (मराठी).
-- **🔒 Complete Privacy & Offline Operation**: Zero data tracking or third-party cloud requirements. All learning analytics, streaks, and quiz sessions remain stored locally in SQLite/Room.
+To achieve the highest knowledge retention and peak exam readiness, AnkiPrep is structured around an **Intended Active Recall Workflow**:
+
+```
+[Import High-Yield CSV / Material] 
+               │
+               ▼
+   [Organize & Hierarchy Review]  ──► (Drag & Drop, Subdeck Nesting)
+               │
+               ▼
+      [Daily Practice Mode]       ──► (Instant Feedback, Distractor Learning)
+               │
+               ▼
+     [Spaced Revision Mode]       ──► (FSRS-Driven Algorithm, Overcoming Forgetting Curve)
+               │
+               ▼
+     [Exam Simulation Mode]       ──► (Full Mock Exam with Negative Marking & Timers)
+               │
+               ▼
+   [Review Mistakes & Heatmaps]   ──► (Pinpoint Weak Topics, Close Knowledge Gaps)
+```
+
+1. **Morning Ingestion & Planning:**
+   - Import curated topic packages (CSV/APKG) for the subjects you plan to study.
+   - Use the **Manage Decks** view to nest sub-topics under master subjects (e.g., `Polity :: Fundamental Rights`, `History :: Modern :: Freedom Struggle`).
+2. **First-Pass Practice (Active Retrieval):**
+   - Take newly imported decks in **Practice Mode**.
+   - Answer each question actively. On submitting, review detailed explanations and instant rating tags (Again, Hard, Good, Easy).
+   - Use the floating inking canvas / stylus toolbar to work out rough math, scratch notes, or jot formulas directly on the screen.
+3. **Daily Revision (FSRS Algorithm):**
+   - Check the **Revise** tab every morning.
+   - AnkiPrep's FSRS (Free Spaced Repetition Scheduler) calculates when memory retention is about to lapse and serves cards scheduled precisely for that day.
+4. **Mock Exam Simulation:**
+   - Combine multiple decks and subtopics into a timed **Mock Exam**.
+   - Strict exam simulation includes negative marking penalties, countdown timers, unvisited/answered question navigation drawers, and an instant post-exam performance scorecard.
+5. **Mistake Review & Analytics:**
+   - Tap **Review Mistakes** right after any session to isolate every question you missed.
+   - Re-attempt incorrectly answered questions without resetting overall deck progress until you achieve 100% conceptual mastery.
 
 ---
 
-## 📥 Sample Ingestion Files & Formats
+## 🛒 Upcoming CSV Package Store & Marketplace
 
-AnkiPrep supports diverse, flexible question formats out of the box. Verified sample files are included in the [`sample_import_files/`](sample_import_files/) directory:
+> **Note for Aspirants & Educators:**
+> We are building a dedicated companion web platform where students can purchase and download topic-wise, curated CSV study packages across major competitive exam syllabi (SSC CGL/CHSL, UPSC Prelims, Banking PO/Clerk, State PSCs, Railway RRB, and General Studies).
+>
+> Each package will feature:
+> - Verified error-free questions, options, and comprehensive bilingual explanations.
+> - Hierarchical category tags mapped directly to exam syllabus topics.
+> - Direct 1-tap download and instant ingestion into the AnkiPrep Android app.
 
-### 1. Standard Multiple-Choice CSV (`sample_import_files/sample_mcq.csv`)
-Columns: `Tags / Topic`, `Question`, `Answer | Option 1 | Option 2 | Option 3`, `Explanation`
+---
 
+## ⚡ Comprehensive Feature Breakdown
+
+### 1. Offline MCQ Engine & Intelligent Distractor Generation
+- **Automated Distractor Synthesis:** If a card or flashcard has only a single question and answer, AnkiPrep dynamically generates contextually and semantically similar distractor options from related cards within the same deck.
+- **Support for Multi-Option Structures:** Supports multiple formats including single fact sheets, standard 4-option MCQs (`Question, Answer | Opt1 | Opt2 | Opt3`), and 5-column hierarchical sets.
+- **Bilingual Question Translation:** In-line translation toggle during quizzes lets you seamlessly alternate between English and regional languages without leaving the active question view.
+
+### 2. Multi-Format High-Performance Streaming Ingestion
+- **Streaming CSV Importer:** Ingests massive CSV sets (10,000+ questions) smoothly in background worker threads without UI freezing, utilizing chunked atomic database transactions.
+- **Flexible Column Mapping:** Includes an interactive column mapper that auto-detects Question, Answer, Distractor Options, Tags, and Explanations.
+- **Anki `.apkg` Support:** Native parsing of SQLite Anki collections, note types, and media files.
+- **Smart PDF Extraction:** Built-in PDF reader that parses past-year exam papers, questions, and option segments with on-device column boundary detection.
+- **EPUB & ZIP Ingestion:** Reads digital books and chapters, segmenting chapters into individual subdecks automatically.
+- **Camera / Photo Snipping OCR:** Snap a picture of a textbook or question paper with on-device ML Kit OCR to instantly crop and synthesize an MCQ card.
+
+### 3. Deck Management, Drag-and-Drop & Ergonomic Multi-Select
+- **Long-Press Multi-Select:** Clean, uncluttered deck lists with zero persistent checkboxes. Long-press any deck item to activate Selection Mode with tactile haptic feedback.
+- **Batch Operations:** In Selection Mode, perform bulk actions in a single tap:
+  - **Delete:** Safely remove selected decks and cards.
+  - **Nest Under Master:** Group several decks into subdecks under a parent topic.
+  - **Club Questions:** Merge multiple decks into a single consolidated question bank with duplicate resolution.
+  - **Combined Mock / Test:** Launch an exam session combining cards from all selected decks.
+- **Dedicated Drag Handle:** Reorder decks and sibling topics smoothly using dedicated drag handles without accidental touch conflicts.
+- **Cyclic Hierarchy Protection:** Built-in validation prevents accidental cyclic dependencies (a parent deck cannot be dropped into its own child deck).
+
+### 4. Spaced Repetition (FSRS & Leitner Scheduling)
+- **FSRS (Free Spaced Repetition Scheduler):** State-of-the-art memory decay model predicting memory stability and retrievability.
+- **5-Box Leitner System:** Visual progression of mastery across traditional interval boxes.
+- **Persistent Progress Tracking:** Review states and mastery ratings remain independent from source card data. Resetting progress never alters the original cards.
+
+### 5. In-Quiz Floating Stylus Canvas & Whiteboard Toolbar
+- **Low-Latency Inking:** Floating capsule toolbar equipped with pen, pencil, and highlighter modes for quick rough work, math calculations, and mnemonics.
+- **Tactile Canvas Controls:** Undo, redo, color picker, eraser, and hide/show whiteboard without losing your position in the quiz.
+- **Ergonomic Floating Bounds:** Toolbar remains strictly bounded within the viewport, scrollable on smaller screens.
+
+### 6. Full Mock Exam Engine
+- **Exam Presets:** Pre-configured exam formats (SSC, Banking, UPSC) or custom scoring rules (e.g., +2.0 marks for correct answers, -0.66 for incorrect).
+- **Session Timers:** Overall exam countdown timer and per-question target time alerts.
+- **Question Palette Drawer:** Visual grid indicating Answered, Marked for Review, and Unvisited questions with 1-tap jump navigation.
+- **Post-Exam Analytics:** Instant breakdown of accuracy, net score, negative marks, and speed per question.
+
+### 7. Rich Analytics & Study Heatmaps
+- **52-Week Activity Heatmap:** GitHub-style daily study heatmap visualizing practice, revision, and test completion consistency.
+- **Streak Tracker:** Active day counters, current streaks, and longest study streaks.
+- **Performance Curves:** Retention rate analysis, topic-level weakness flags, and time-distribution charts.
+
+### 8. Customization, Themes & Direct In-App Updates
+- **Theme Diversity:** Cyber-Mint Dark, Pure AMOLED Black, Warm Light, Emerald, and Ocean palettes.
+- **Typography & Font Uploads:** Upload your own custom `.ttf` or `.otf` fonts for high-readability study typography.
+- **Direct In-App Updates:** Check for updates and download new release APKs directly from **Settings → About Us** with automated FileProvider installation.
+
+---
+
+## 📥 Supported File Formats & Examples
+
+Verified sample files can be found in the [`sample_import_files/`](sample_import_files/) folder:
+
+### 1. Standard MCQ CSV (`sample_import_files/sample_mcq.csv`)
 ```csv
 "Quant, Number Systems", "What is the remainder when 2^31 is divided by 5?", "3 | 1 | 2 | 4", "Cycle of powers of 2 mod 5 is 2, 4, 3, 1 (period 4). 31 mod 4 = 3, so 2^3 = 8 = 3 mod 5."
 "English, Vocabulary", "Choose the closest synonym for the word: 'Ephemeral'", "Transitory | Eternal | Monotonous | Gigantic", "Ephemeral means lasting for a very short time; fleeting or transitory."
@@ -41,8 +135,6 @@ Columns: `Tags / Topic`, `Question`, `Answer | Option 1 | Option 2 | Option 3`, 
 ```
 
 ### 2. Five-Column Hierarchical CSV (`sample_import_files/sample_5col_history.csv`)
-Columns: `topic`, `subtopic`, `question`, `answer`, `explaination`
-
 ```csv
 topic, subtopic, question, answer, explaination
 History, Ancient, Which river was known as Parushni in the Rigveda?, Ravi, Parushni is the Vedic name for modern river Ravi where the Battle of Ten Kings took place.
@@ -51,8 +143,6 @@ History, Medieval, Battle of Khanwa took place in which year, 1527, Fought betwe
 ```
 
 ### 3. One-Liner / Fact Sheet CSV (`sample_import_files/sample_oneliner.csv`)
-Columns: `question`, `answer`, `explaination`
-
 ```csv
 question, answer, explaination
 Who wrote the National Anthem of India?, Rabindranath Tagore, Jana Gana Mana was originally composed in Bengali as Bharoto Bhagyo Bidhata.
@@ -61,8 +151,6 @@ Which layer of the atmosphere contains the ozone layer?, Stratosphere, Located r
 ```
 
 ### 4. Structured Question JSON (`sample_import_files/sample_questions.json`)
-Supports both top-level arrays and `{"questions": [...]}` wrapped payloads:
-
 ```json
 [
   {
@@ -72,83 +160,57 @@ Supports both top-level arrays and `{"questions": [...]}` wrapped payloads:
     "explanation": "Nitrogen makes up roughly 78.08% of Earth's atmosphere by volume.",
     "topic": "General Science",
     "subtopic": "Atmosphere"
-  },
-  {
-    "question": "What is the capital city of Australia?",
-    "options": ["Canberra", "Sydney", "Melbourne", "Brisbane"],
-    "answer": "Canberra",
-    "explanation": "Canberra was chosen as the capital in 1908 as a compromise between Sydney and Melbourne.",
-    "topic": "Geography",
-    "subtopic": "World Capitals"
   }
 ]
 ```
 
-### 5. Other Supported Test Assets in Repository:
-- **`sample_import_files/sample_book.epub`**: Universal EPUB structure parsed into Chapter decks and subdecks.
-- **`sample_import_files/sample_book.zip`**: Bundled ZIP containing chapters and embedded media.
-- **`sample_import_files/sample_exam.pdf`**: Multi-column past year question paper with automatic column flow detection.
+---
+
+## 🛠️ Tech Stack & Architecture
+
+- **Language:** Kotlin (100% Kotlin-first implementation)
+- **UI Framework:** Jetpack Compose (Material Design 3 tokens and components)
+- **Local Persistence:** Room Database & SQLite with full transactional consistency
+- **Asynchrony:** Kotlin Coroutines & Flow (structured concurrency)
+- **Image Pipeline:** Coil Compose for embedded flashcard and option diagrams
+- **ML & Parsing:** Google ML Kit Text Recognition for OCR question extraction, Jsoup for HTML sanitization
+- **Algorithm:** FSRS (Free Spaced Repetition Scheduler) memory decay engine
 
 ---
 
-## 🛠️ Project Structure
-
-```text
-AnkiPrep/
-├── .github/workflows/
-│   └── release.yml             # Automated GitHub Actions release APK builder
-├── app/
-│   ├── src/main/java/com/example/flashcardapp/
-│   │   ├── data/               # Room database, DAO, entities, and importers
-│   │   │   ├── core/           # Streaming parsers (CsvQuoteUtils, FileImportUtils)
-│   │   │   ├── CsvImporter.kt  # Streaming 250-chunk CSV parser & batch transactions
-│   │   │   └── JsonImporter.kt # Streaming JsonReader importer
-│   │   ├── mcq/                # Offline MCQ generation engine
-│   │   ├── session/            # Active recall quiz state machine
-│   │   └── ui/                 # Jetpack Compose UI (Screens, Settings, Components)
-│   │       ├── components/     # ImportProgressDialog, heatmaps, pomodoro timers
-│   │       └── settings/       # 3-tier hierarchical settings navigation
-│   └── build.gradle.kts        # Application dependencies & signing configuration
-├── sample_import_files/        # Ready-to-import sample CSV, JSON, EPUB, and PDF files
-├── build.gradle.kts            # Root project build script
-└── README.md                   # Project documentation
-```
-
----
-
-## 🚀 Building & Releasing
+## 🚀 Building & Running the Project
 
 ### Prerequisites
 - **JDK 17** (Zulu or OpenJDK recommended)
 - **Android SDK 34+**
-- **Android Studio Ladybug** (or command line tools)
+- **Android Studio Ladybug** (or later)
 
-### Build Debug Assembly Locally
+### Build Debug Assembly
 ```bash
 ./gradlew assembleDebug
 ```
 
 ### Build Release APK Locally
-Windows batch script for clean release builds:
+Windows batch script for clean release builds signed with release keystore:
 ```bat
 build-apk.bat
 ```
-The compiled output is saved to the `release/` directory.
+The output binary is automatically saved to the `release/` directory.
 
 ### Automated Cloud Builds via GitHub Actions
-A complete automated build workflow is configured in [`.github/workflows/release.yml`](.github/workflows/release.yml):
-1. **Pushing a Tag**: Pushing any tag starting with `v` (e.g., `git tag v5.8 && git push origin v5.8`) triggers the workflow to compile a signed release APK and automatically create a GitHub Release with the APK attached.
-2. **Manual Dispatch**: Go to **Actions → Build & Release APK → Run workflow** on GitHub to trigger an on-demand release build.
+GitHub Actions workflow in [`.github/workflows/release.yml`](.github/workflows/release.yml):
+1. **Pushing a Tag:** Pushing any tag starting with `v` (e.g., `git tag v5.16 && git push origin v5.16`) automatically builds a release APK and publishes a GitHub Release.
+2. **Manual Trigger:** Go to **Actions → Build & Release APK → Run workflow** on GitHub to compile a release artifact anytime.
 
 ---
 
 ## 📲 Download & Installation
 
-Pre-compiled release binaries are available under the GitHub [Releases](https://github.com/indicreader/AnkiPrep/releases) tab.
+Pre-compiled release APKs are available under GitHub [Releases](https://github.com/indicreader/AnkiPrep/releases).
 
-1. Download **`AnkiPrep-v*.apk`** from the latest release.
-2. Enable installation of unknown apps on your device (**Settings → Apps → Special app access → Install unknown apps**).
-3. Open the downloaded file to install.
+1. Download the latest **`ankiprep-*.apk`**.
+2. If prompted, enable installation from unknown sources in Android device settings.
+3. Open the file to install or update over your existing AnkiPrep installation.
 
 ---
 
