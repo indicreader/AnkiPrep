@@ -117,6 +117,9 @@ dependencies {
 
     // Native QuickJS Engine wrapper
     implementation(libs.quickjs.android)
+
+    // Native offline LaTeX engine (no WebView overhead)
+    implementation(libs.jlatexmath.android)
 }
 
 // ── Fixed APK release folder ─────────────────────────────────────────────────

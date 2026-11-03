@@ -1,24 +1,38 @@
 package com.example.flashcardapp.ui.components
 
-import android.webkit.WebView
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.unit.sp
 
 /**
- * High-performance Offline Math & LaTeX Renderer.
+ * High-performance 100% Native LaTeX & Math Equation Renderer.
  *
- * Automatically normalizes LaTeX math tokens (fractions, square roots, superscripts,
- * subscripts, greek letters, chemical symbols) into crisp formatted text,
- * with hardware-accelerated WebView fallback for complex multiline equations.
+ * Replaces heavy WebViews with a native offline LaTeX engine (JLatexMath) and
+ * in-memory LRU bitmap caching for instant, zero-jank mathematical expression rendering.
+ *
+ * Supports:
+ * - Pure text with instant Unicode symbol fallback
+ * - Inline LaTeX enclosed in `$ ... $` or `\( ... \)`
+ * - Block multiline/display LaTeX enclosed in `$$ ... $$` or `\[ ... \]`
+ * - Dynamic theme-aware color adaptation
  */
 @Composable
 fun MathView(
@@ -26,56 +40,199 @@ fun MathView(
     modifier: Modifier = Modifier,
     style: TextStyle = LocalTextStyle.current,
     color: Color = MaterialTheme.colorScheme.onSurface,
-    forceWebView: Boolean = false
+    forceWebView: Boolean = false // Kept for backward compatibility; ignored in native mode
 ) {
-    val hasComplexLatex = remember(text) {
-        text.contains("$$") || text.contains("\\begin") || text.contains("\\matrix")
+    if (text.isBlank()) {
+        Text(text = "", modifier = modifier, style = style, color = color)
+        return
     }
 
-    val hasSimpleMath = remember(text) {
-        text.contains("$") || text.contains("\\frac") || text.contains("\\sqrt") ||
-                text.contains("\\pm") || text.contains("\\times") || text.contains("\\alpha") ||
-                text.contains("\\beta") || text.contains("\\pi") || text.contains("\\theta") ||
-                text.contains("->") || text.contains("\\rightarrow")
+    val density = LocalDensity.current
+    val fontSizeSp = style.fontSize.takeIf { it.isSpecified }?.value ?: 16f
+    val textSizePx = with(density) { fontSizeSp.sp.toPx() }
+    val colorArgb = color.toArgb()
+
+    // Inspect whether text contains mathematical delimiters or LaTeX commands
+    val hasLatexSyntax = remember(text) {
+        text.contains("$$") || text.contains("$") ||
+                text.contains("\\[") || text.contains("\\(") ||
+                text.contains("\\frac") || text.contains("\\sqrt") ||
+                text.contains("\\sum") || text.contains("\\int") ||
+                text.contains("\\matrix") || text.contains("\\begin") ||
+                text.contains("\\times") || text.contains("\\pm")
     }
 
-    if ((hasComplexLatex || forceWebView) && hasSimpleMath) {
-        // Complex multiline / matrix LaTeX display via offline WebView
-        val textColorHex = String.format("#%06X", 0xFFFFFF and color.toArgb())
-        val htmlContent = remember(text, textColorHex) {
-            buildHtmlMathDocument(text, textColorHex, style.fontSize.value)
-        }
-
-        AndroidView(
-            modifier = modifier.fillMaxWidth(),
-            factory = { context ->
-                WebView(context).apply {
-                    setBackgroundColor(0x00000000) // Transparent background
-                    settings.javaScriptEnabled = true
-                    settings.allowFileAccess = true
-                }
-            },
-            update = { webView ->
-                webView.loadDataWithBaseURL(null, htmlContent, "text/html", "utf-8", null)
-            }
-        )
-    } else {
-        // Fast Native Compose rendering using Unicode normalization
-        val formatted = remember(text) {
-            normalizeLatexToUnicode(text)
-        }
-
+    if (!hasLatexSyntax) {
+        // Fast path: standard text without LaTeX formulas
         Text(
-            text = formatted,
+            text = text,
             modifier = modifier,
             style = style,
             color = color
         )
+        return
     }
+
+    // Check if entire string is a single block equation: $$...$$ or \[...\]
+    val trimmed = text.trim()
+    val isPureBlockFormula = remember(trimmed) {
+        (trimmed.startsWith("$$") && trimmed.endsWith("$$") && trimmed.length > 4) ||
+                (trimmed.startsWith("\\[") && trimmed.endsWith("\\]") && trimmed.length > 4)
+    }
+
+    if (isPureBlockFormula) {
+        val formula = if (trimmed.startsWith("$$")) {
+            trimmed.substring(2, trimmed.length - 2).trim()
+        } else {
+            trimmed.substring(2, trimmed.length - 2).trim()
+        }
+
+        val renderedBitmap = remember(formula, colorArgb, textSizePx) {
+            LateXRenderingCache.render(formula, colorArgb, textSizePx * 1.15f)
+        }
+
+        if (renderedBitmap != null) {
+            Box(
+                modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    bitmap = renderedBitmap,
+                    contentDescription = formula,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+            return
+        }
+    }
+
+    // Mixed mode: Parse text segments and embedded inline math tokens
+    val parsedSegments = remember(text) {
+        parseMathSegments(text)
+    }
+
+    val inlineContentMap = mutableMapOf<String, InlineTextContent>()
+    val annotatedText = buildAnnotatedString {
+        parsedSegments.forEachIndexed { index, segment ->
+            if (segment.isMath) {
+                val inlineTag = "latex_inline_$index"
+                val bitmap = LateXRenderingCache.render(segment.content, colorArgb, textSizePx)
+                if (bitmap != null) {
+                    appendInlineContent(inlineTag, "[math]")
+                    val widthDp = with(density) { bitmap.width.toDp() }
+                    val heightDp = with(density) { bitmap.height.toDp() }
+
+                    inlineContentMap[inlineTag] = InlineTextContent(
+                        placeholder = Placeholder(
+                            width = widthDp.value.sp,
+                            height = heightDp.value.sp,
+                            placeholderVerticalAlign = PlaceholderVerticalAlign.Center
+                        )
+                    ) {
+                        Image(
+                            bitmap = bitmap,
+                            contentDescription = segment.content,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                } else {
+                    // Fallback to unicode normalized text if parser fails
+                    append(normalizeLatexToUnicode(segment.content))
+                }
+            } else {
+                append(segment.content)
+            }
+        }
+    }
+
+    Text(
+        text = annotatedText,
+        inlineContent = inlineContentMap,
+        modifier = modifier,
+        style = style,
+        color = color
+    )
 }
 
 /**
- * Converts standard LaTeX tokens to clean Unicode representations for instant native rendering.
+ * Segment data model for mixed plain text and math formulas.
+ */
+data class TextMathSegment(
+    val content: String,
+    val isMath: Boolean
+)
+
+/**
+ * Fast scanner separating plain text from LaTeX expressions delimited by:
+ * - `$$...$$` (block/display math)
+ * - `$ ... $` (inline math)
+ * - `\(...\)` (LaTeX standard inline)
+ * - `\[...\]` (LaTeX standard display)
+ */
+fun parseMathSegments(raw: String): List<TextMathSegment> {
+    val segments = mutableListOf<TextMathSegment>()
+    var currentIndex = 0
+    val length = raw.length
+
+    while (currentIndex < length) {
+        // Find next delimiter
+        val dollarBlock = raw.indexOf("$$", currentIndex)
+        val bracketBlock = raw.indexOf("\\[", currentIndex)
+        val parenInline = raw.indexOf("\\(", currentIndex)
+        val singleDollar = raw.indexOf("$", currentIndex)
+
+        // Find the earliest starting delimiter
+        val candidateStarts = listOfNotNull(
+            if (dollarBlock != -1) Pair(dollarBlock, "$$") else null,
+            if (bracketBlock != -1) Pair(bracketBlock, "\\[") else null,
+            if (parenInline != -1) Pair(parenInline, "\\(") else null,
+            if (singleDollar != -1 && singleDollar != dollarBlock) Pair(singleDollar, "$") else null
+        ).sortedBy { it.first }
+
+        if (candidateStarts.isEmpty()) {
+            // No more math tokens, add remaining text
+            if (currentIndex < length) {
+                segments.add(TextMathSegment(raw.substring(currentIndex), isMath = false))
+            }
+            break
+        }
+
+        val (startIndex, delimiter) = candidateStarts.first()
+
+        // Append text preceding the delimiter
+        if (startIndex > currentIndex) {
+            segments.add(TextMathSegment(raw.substring(currentIndex, startIndex), isMath = false))
+        }
+
+        val closingDelimiter = when (delimiter) {
+            "$$" -> "$$"
+            "\\[" -> "\\]"
+            "\\(" -> "\\)"
+            "$" -> "$"
+            else -> "$"
+        }
+
+        val formulaStart = startIndex + delimiter.length
+        val formulaEnd = raw.indexOf(closingDelimiter, formulaStart)
+
+        if (formulaEnd != -1) {
+            val formula = raw.substring(formulaStart, formulaEnd)
+            if (formula.isNotBlank()) {
+                segments.add(TextMathSegment(formula, isMath = true))
+            }
+            currentIndex = formulaEnd + closingDelimiter.length
+        } else {
+            // Unmatched delimiter; treat as regular text
+            segments.add(TextMathSegment(raw.substring(startIndex), isMath = false))
+            break
+        }
+    }
+
+    return segments
+}
+
+/**
+ * Converts standard LaTeX tokens to clean Unicode representations for instant native fallback.
  */
 fun normalizeLatexToUnicode(raw: String): String {
     var s = raw
@@ -146,34 +303,4 @@ fun normalizeLatexToUnicode(raw: String): String {
     s = s.replace("N2", "N₂")
 
     return s
-}
-
-/**
- * Builds standalone HTML with embedded KaTeX CSS/JS for complex equations.
- */
-private fun buildHtmlMathDocument(latexText: String, textColor: String, fontSizeSp: Float): String {
-    val escaped = latexText.replace("\"", "&quot;").replace("\n", "<br/>")
-    return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-            <style>
-                body {
-                    margin: 0;
-                    padding: 4px;
-                    background-color: transparent;
-                    color: $textColor;
-                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                    font-size: ${fontSizeSp}px;
-                    line-height: 1.4;
-                    word-wrap: break-word;
-                }
-            </style>
-        </head>
-        <body>
-            <div>$escaped</div>
-        </body>
-        </html>
-    """.trimIndent()
 }
