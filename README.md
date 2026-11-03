@@ -230,6 +230,19 @@ Pre-compiled release APKs are available under GitHub [Releases](https://github.c
 
 ---
 
+## 📜 Version History & Release Changelog
+
+A comprehensive, version-by-version log of all features, enhancements, and bug fixes is maintained in [**CHANGELOG.md**](CHANGELOG.md).
+
+### Recent Releases
+- **[v5.18](CHANGELOG.md#518---2026-11-03):** Key-Driven Dynamic Exam Theme Engine (`ExamThemeTokens`), TCS iON & NTA Console simulation presets, and interactive Theme Studio in Settings.
+- **[v5.17](CHANGELOG.md#517---2026-11-03):** 100% offline native LaTeX math rendering engine (`jlatexmath-android`), in-memory LRU equation cache (`LateXRenderingCache`), and elimination of WebView lag.
+- **[v5.16](CHANGELOG.md#516---2026-11-02):** "Tukke" (Educated Guess) mode with FSRS retention penalty on lucky guesses, reactive Room deck-wise accuracy analytics, and Database v17.
+- **[v5.15](CHANGELOG.md#515---2026-11-02):** Streamlined Manage Decks header with 48dp accessible touch targets for night mode toggle and Pomodoro study timer.
+- **[v5.14](CHANGELOG.md#514---2026-11-02):** Tactile long-press multi-select for batch nesting, merging, and deleting decks without persistent checkboxes.
+
+---
+
 ## 📄 License
 
 This project is licensed under the GNU General Public License v3.0 — see the [LICENSE](LICENSE) file for details.
