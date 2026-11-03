@@ -33,6 +33,16 @@ import kotlinx.coroutines.launch
 /**
  * Competitive Mock Exam Simulator Screen.
  */
+private fun getStatusColor(status: QuestionStatus, tokens: ExamThemeTokens): Color {
+    return when (status) {
+        QuestionStatus.ANSWERED -> tokens.composeColorAnswered
+        QuestionStatus.NOT_ANSWERED -> tokens.composeColorNotAnswered
+        QuestionStatus.MARKED_FOR_REVIEW -> tokens.composeColorMarkedForReview
+        QuestionStatus.ANSWERED_AND_MARKED -> tokens.composeColorAnsweredAndReview
+        QuestionStatus.NOT_VISITED -> tokens.composeColorNotVisited
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MockExamScreen(
@@ -42,6 +52,7 @@ fun MockExamScreen(
     onFinish: (MockExamScorecard) -> Unit,
     onBackPressed: () -> Unit
 ) {
+    val examTokens = LocalExamThemeTokens.current
     if (questions.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No questions available in this deck to start a mock exam.", color = MaterialTheme.colorScheme.onSurface)
@@ -256,12 +267,12 @@ fun MockExamScreen(
             ) {
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = Color(currentAttempt.status.colorHex).copy(alpha = 0.2f),
-                    border = BorderStroke(1.dp, Color(currentAttempt.status.colorHex))
+                    color = getStatusColor(currentAttempt.status, examTokens).copy(alpha = 0.2f),
+                    border = BorderStroke(1.dp, getStatusColor(currentAttempt.status, examTokens))
                 ) {
                     Text(
                         text = currentAttempt.status.label,
-                        color = Color(currentAttempt.status.colorHex),
+                        color = getStatusColor(currentAttempt.status, examTokens),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -381,7 +392,7 @@ fun MockExamScreen(
                                 modifier = Modifier
                                     .size(10.dp)
                                     .clip(CircleShape)
-                                    .background(Color(st.colorHex))
+                                    .background(getStatusColor(st, examTokens))
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(st.label, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -406,7 +417,7 @@ fun MockExamScreen(
                                 .padding(4.dp)
                                 .size(40.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Color(st.colorHex))
+                                .background(getStatusColor(st, examTokens))
                                 .border(
                                     width = if (isCurr) 2.dp else 0.dp,
                                     color = if (isCurr) MaterialTheme.colorScheme.onSurface else Color.Transparent,

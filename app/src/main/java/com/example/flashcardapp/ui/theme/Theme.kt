@@ -716,11 +716,17 @@ fun AnkiQuizTheme(
         }
     }
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography  = buildTypography(fontFamily, fontScaleFactor),
-        shapes      = AnkiShapes,
-        content     = content
-    )
+    val examTokens = ExamThemeManager.currentTokens
+
+    CompositionLocalProvider(
+        LocalExamThemeTokens provides examTokens
+    ) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography  = buildTypography(fontFamily, fontScaleFactor),
+            shapes      = AnkiShapes,
+            content     = content
+        )
+    }
 }
 
