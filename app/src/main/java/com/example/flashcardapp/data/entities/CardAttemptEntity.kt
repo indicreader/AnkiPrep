@@ -18,5 +18,7 @@ data class CardAttemptEntity(
     val timeTakenMs: Long = 0L,
     /** FSRS rating computed by StealthRatingMapper: 1=Again, 2=Hard, 3=Good, 4=Easy */
     val fsrsRating: Int = 0,
+    /** Whether the user marked this answer as an educated guess / Tukke */
+    val isGuess: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 )
