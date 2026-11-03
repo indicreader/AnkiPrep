@@ -50,6 +50,12 @@ fun AppearanceCategoryScreen(
         )
 
         SettingSubheadingCard(
+            subCategory = SettingsSubCategory.THEME_STUDIO,
+            badgeText = com.example.flashcardapp.ui.theme.ExamThemeManager.currentTokens.displayName.split(" ").first(),
+            onClick = { onNavigateToSubCategory(SettingsSubCategory.THEME_STUDIO) }
+        )
+
+        SettingSubheadingCard(
             subCategory = SettingsSubCategory.DARK_MODE,
             badgeText = if (isDarkMode) "Dark" else "Light",
             onClick = { onNavigateToSubCategory(SettingsSubCategory.DARK_MODE) }
@@ -79,6 +85,9 @@ fun AppearanceSubCategoryScreen(
     val repository = remember { SettingsRepository.getInstance(context) }
 
     when (subCategory) {
+        SettingsSubCategory.THEME_STUDIO -> {
+            ThemeStudioScreen()
+        }
         SettingsSubCategory.THEME_SELECTION -> {
             Column(
                 modifier = Modifier

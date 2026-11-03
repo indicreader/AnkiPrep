@@ -81,6 +81,12 @@ enum class SettingsSubCategory(
         "Select curated color schemes and accents",
         Icons.Outlined.ColorLens
     ),
+    THEME_STUDIO(
+        SettingsCategory.APPEARANCE,
+        "Exam Simulation & Theme Studio",
+        "TCS iON, NTA Console, live preview & custom palette builder",
+        Icons.Outlined.Palette
+    ),
     DARK_MODE(
         SettingsCategory.APPEARANCE,
         "Dark & OLED Mode",
