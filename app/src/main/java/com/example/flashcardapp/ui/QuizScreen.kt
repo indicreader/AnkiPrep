@@ -775,7 +775,40 @@ fun QuizScreen(
                                     color = colorScheme.primary
                                 )
 
-                                if (hasTranslation) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    // Tukke / Educated Guess Chip
+                                    val isGuess = sessionState.guesses.contains(sessionState.currentQuestionIndex)
+                                    Surface(
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = if (isGuess) colorScheme.tertiaryContainer else colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        border = BorderStroke(1.dp, if (isGuess) colorScheme.tertiary else colorScheme.outline.copy(alpha = 0.4f)),
+                                        modifier = Modifier.clickable {
+                                            sessionManager.toggleGuess(sessionState.currentQuestionIndex)
+                                        }
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.HelpOutline,
+                                                contentDescription = "Tukke / Educated Guess",
+                                                tint = if (isGuess) colorScheme.onTertiaryContainer else colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Text(
+                                                text = if (isGuess) "Tukke" else "Guess?",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = if (isGuess) FontWeight.Bold else FontWeight.Medium),
+                                                color = if (isGuess) colorScheme.onTertiaryContainer else colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    if (hasTranslation) {
                                     Surface(
                                         shape = RoundedCornerShape(20.dp),
                                         color = if (isQuestionTranslated) colorScheme.primary else colorScheme.primaryContainer.copy(alpha = 0.7f),
@@ -802,6 +835,7 @@ fun QuizScreen(
                                             )
                                         }
                                     }
+                                }
                                 }
                             }
 

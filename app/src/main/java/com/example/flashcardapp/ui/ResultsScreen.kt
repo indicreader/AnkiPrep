@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -194,6 +195,50 @@ fun ResultsScreen(
                             icon = Icons.Outlined.Timer,
                             color = colorScheme.secondary
                         )
+                    }
+
+                    val totalGuesses = answeredQuestions.count { it.isGuess }
+                    val luckyGuesses = answeredQuestions.count { it.isGuess && it.isCorrect }
+                    val realCorrect = (score - luckyGuesses).coerceAtLeast(0)
+                    val realAccuracy = if (totalQuestions > 0) ((realCorrect.toFloat() / totalQuestions) * 100).toInt() else 0
+
+                    if (totalGuesses > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = colorScheme.tertiaryContainer.copy(alpha = 0.45f),
+                            border = BorderStroke(1.dp, colorScheme.tertiary.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.HelpOutline,
+                                        contentDescription = null,
+                                        tint = colorScheme.onTertiaryContainer,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "Tukke: $totalGuesses ($luckyGuesses Lucky)",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = colorScheme.onTertiaryContainer
+                                    )
+                                }
+                                Text(
+                                    text = "Real Accuracy: $realAccuracy%",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = colorScheme.primary
+                                )
+                            }
+                        }
                     }
                 }
             }

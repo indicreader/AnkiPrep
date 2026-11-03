@@ -1635,11 +1635,16 @@ fun MainLayout(
                                 )
                                 val attempts = mutableListOf<com.example.flashcardapp.data.entities.CardAttemptEntity>()
                                 for (record in sessionState.answeredQuestions) {
-                                    val rating = repo.fsrsScheduler.processAnswer(
-                                        cardId = record.question.sourceCardId,
-                                        isCorrect = record.isCorrect,
-                                        timeTakenMs = record.timeTakenMs
-                                    )
+                                    val rating = if (record.isGuess && record.isCorrect) {
+                                        repo.fsrsScheduler.overrideRating(record.question.sourceCardId, com.example.flashcardapp.fsrs.Rating.Hard)
+                                        com.example.flashcardapp.fsrs.Rating.Hard
+                                    } else {
+                                        repo.fsrsScheduler.processAnswer(
+                                            cardId = record.question.sourceCardId,
+                                            isCorrect = record.isCorrect,
+                                            timeTakenMs = record.timeTakenMs
+                                        )
+                                    }
                                     attempts.add(
                                         com.example.flashcardapp.data.entities.CardAttemptEntity(
                                             cardId = record.question.sourceCardId,
@@ -1647,6 +1652,7 @@ fun MainLayout(
                                             isCorrect = record.isCorrect,
                                             timeTakenMs = record.timeTakenMs,
                                             fsrsRating = rating.value,
+                                            isGuess = record.isGuess,
                                             timestamp = System.currentTimeMillis()
                                         )
                                     )

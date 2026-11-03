@@ -36,7 +36,8 @@ data class AnswerRecord(
     val question: Mcq,
     val selectedOptionIndex: Int,
     val isCorrect: Boolean,
-    val timeTakenMs: Long
+    val timeTakenMs: Long,
+    val isGuess: Boolean = false
 )
 
 /**
@@ -52,6 +53,8 @@ data class McqSessionState(
     val selections: Map<Int, Int> = emptyMap(),
     // Question times in milliseconds mapped by question index
     val questionTimingsMs: Map<Int, Long> = emptyMap(),
+    // Set of question indices marked as educated guess / Tukke
+    val guesses: Set<Int> = emptySet(),
     val totalTimeTakenMs: Long = 0L,
     val isFinished: Boolean = false,
     val activeTagFilter: String? = null
@@ -130,7 +133,7 @@ class McqSessionManager(
      * updates score, records stats, and triggers feedback.
      * In [McqSessionMode.TEST], this records/updates selection temporarily.
      */
-    fun selectOption(optionIndex: Int, timeTakenMs: Long): McqSessionState {
+    fun selectOption(optionIndex: Int, timeTakenMs: Long, isGuess: Boolean = false): McqSessionState {
         if (state.isFinished) {
             SessionLogger.w(TAG, "Cannot select option: session is finished.")
             return state
@@ -148,11 +151,13 @@ class McqSessionManager(
             val isCorrect = optionIndex == currentMcq.correctIndex
             val newScore = if (isCorrect) state.score + 1 else state.score
 
+            val markedGuess = isGuess || state.guesses.contains(currentIndex)
             val record = AnswerRecord(
                 question = currentMcq,
                 selectedOptionIndex = optionIndex,
                 isCorrect = isCorrect,
-                timeTakenMs = timeTakenMs
+                timeTakenMs = timeTakenMs,
+                isGuess = markedGuess
             )
 
             val updatedSelections = state.selections + (currentIndex to optionIndex)
@@ -235,12 +240,14 @@ class McqSessionManager(
                 if (isCorrect) finalScore++
 
                 val time = state.questionTimingsMs[index] ?: 0L
+                val isGuess = state.guesses.contains(index)
                 records.add(
                     AnswerRecord(
                         question = mcq,
                         selectedOptionIndex = selection,
                         isCorrect = isCorrect,
-                        timeTakenMs = time
+                        timeTakenMs = time,
+                        isGuess = isGuess
                     )
                 )
             }
@@ -262,6 +269,20 @@ class McqSessionManager(
 
         notifyListeners()
         onSessionFinished?.invoke(state)
+        return state
+    }
+
+    /**
+     * Toggles the "Tukke / Educated Guess" flag for the given question.
+     */
+    fun toggleGuess(questionIndex: Int): McqSessionState {
+        val updatedGuesses = if (state.guesses.contains(questionIndex)) {
+            state.guesses - questionIndex
+        } else {
+            state.guesses + questionIndex
+        }
+        state = state.copy(guesses = updatedGuesses)
+        notifyListeners()
         return state
     }
 
