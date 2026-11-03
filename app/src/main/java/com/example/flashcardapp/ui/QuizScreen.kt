@@ -850,7 +850,7 @@ fun QuizScreen(
                                     unstripped
                                 }
                             }
-                            Text(
+                            com.example.flashcardapp.ui.components.MathView(
                                 text = cleanQuestionText,
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     fontWeight = FontWeight.Bold,
@@ -1050,11 +1050,10 @@ fun QuizScreen(
                                         ImageStorageManager.cleanImageTagsFromText(explanationToDisplay)
                                     }
                                     if (cleanExplanation.isNotEmpty()) {
-                                        Text(
+                                        com.example.flashcardapp.ui.components.MathView(
                                             text = cleanExplanation,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
-                                            lineHeight = 20.sp
+                                            style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
+                                            color = colorScheme.onTertiaryContainer.copy(alpha = 0.85f)
                                         )
                                     }
 
@@ -1458,7 +1457,7 @@ private fun QuizOptionCard(
                     if (!imageUrl.isNullOrBlank()) "Option Image" else text
                 }
 
-                Text(
+                com.example.flashcardapp.ui.components.MathView(
                     text = displayText,
                     style = MaterialTheme.typography.bodyLarge,
                     color = when {

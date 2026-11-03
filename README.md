@@ -116,7 +116,13 @@ To achieve the highest knowledge retention and peak exam readiness, AnkiPrep is 
 - **Streak Tracker:** Active day counters, current streaks, and longest study streaks.
 - **Performance Curves:** Retention rate analysis, topic-level weakness flags, and time-distribution charts.
 
-### 8. Customization, Themes & Direct In-App Updates
+### 8. Native LaTeX & Math Equation Engine (FEAT-15)
+- **100% Offline Native TeX:** Powered by an integrated native Android Canvas math engine (`jlatexmath-android`), completely eliminating heavy, battery-draining WebViews.
+- **In-Memory LRU Cache:** Bitmaps and drawables are rendered and held in `LateXRenderingCache` with instantaneous sub-millisecond retrieval on card reviews.
+- **Mixed Content & Delimiters:** Seamlessly recognizes both inline equations (`$x^2 + y^2 = r^2$`, `\(...\)`) and full display blocks (`$$...$$`, `\[...\]`).
+- **Theme-Aware Dynamic Colors:** Equations adapt their stroke colors automatically across AMOLED Black, Cyber-Mint, and Light Mode without needing re-parsing.
+
+### 9. Customization, Themes & Direct In-App Updates
 - **Theme Diversity:** Cyber-Mint Dark, Pure AMOLED Black, Warm Light, Emerald, and Ocean palettes.
 - **Typography & Font Uploads:** Upload your own custom `.ttf` or `.otf` fonts for high-readability study typography.
 - **Direct In-App Updates:** Check for updates and download new release APKs directly from **Settings → About Us** with automated FileProvider installation.
