@@ -243,6 +243,12 @@ enum class SettingsSubCategory(
         "Mission, developer details, version & Easter egg",
         Icons.Outlined.Info
     ),
+    RELEASE_NOTES(
+        SettingsCategory.ABOUT,
+        "Release Notes & Changelog",
+        "Version history and newly added features",
+        Icons.Outlined.Newspaper
+    ),
     PRIVACY_POLICY(
         SettingsCategory.ABOUT,
         "Privacy Policy",

@@ -84,3 +84,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
   - On-device text recognition to snap textbook pages and extract questions, options (A-D), and explanations into draft cards.
 - **Floating Stylus Canvas Toolbar:**
   - Low-latency inking canvas with pen, pencil, and highlighter for rough work during quizzes.
+
