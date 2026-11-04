@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [5.18] - 2026-11-03
 
 ### Added
+- **Streamlined Local Wi-Fi Sync Portal (FEAT-16):**
+  - Intuitive Xender/ShareIt style **📤 SEND** and **📥 RECEIVE** interface eliminating all networking and server jargon.
+  - Seamless 4-digit security PIN pairing on local Wi-Fi / hotspot.
+  - **Smart Database Merge Engine (`SmartMergeSyncEngine`):** Non-destructive delta sync that overwrites identical decks while cleanly appending new decks without wiping unrelated local data.
+- **Automated SAF Backup Engine (FEAT-17):**
+  - **Nightly WorkManager Scheduler:** WhatsApp-style background backup at user-defined hours (default 2:00 AM) with battery-not-low constraints.
+  - **Smart Change Detection:** Skips backups if cards, attempts, or decks haven't changed since the last snapshot.
+  - **7-Day Auto-Pruning:** Retains strictly the last 7 daily `.zip` snapshots in the user's SAF folder to conserve device storage.
+  - **Full Database Restore Flow:** Safe restore flow with confirmation dialog and automatic app restart.
 - **Key-Driven Dynamic Exam Theme Engine (FEAT-13-15):**
   - Immutable `ExamThemeTokens` model controlling surface colors, borders, chrome, typography, and question status states (`Answered`, `Not Answered`, `Marked for Review`, `Answered & Review`, `Not Visited`).
   - Pre-configured authentic exam simulation presets:

@@ -137,6 +137,12 @@ To achieve the highest knowledge retention and peak exam readiness, AnkiPrep is 
 - **Direct In-App Updates:** Check for updates and download new release APKs directly from **Settings → About Us** with automated FileProvider installation.
 - **"What's New" Changelog:** Automatically displays highlights and new feature walkthroughs on first launch after an update.
 
+### 11. Local Wi-Fi Direct Transfer & Automated SAF Backup Engine (FEAT-16 & FEAT-17)
+- **Wi-Fi Direct Transfer (Send & Receive):** Instant offline sharing between devices on the same local network using two primary action cards (SEND / RECEIVE) with secure 4-digit PIN pairing.
+- **Smart Merge Conflict Resolution:** Overwrites identical matching decks while cleanly appending new ones, preventing any data loss of unshared local decks.
+- **Automated SAF Nightly Backup:** WhatsApp-style background backup at scheduled user hours (e.g. 2:00 AM) with smart change-detection skipping and 7-day retention auto-pruning.
+- **Full Database Restore Flow:** Safe snapshot restoration with confirmation prompts and automatic app restart.
+
 ---
 
 ## 📥 Supported File Formats & Examples
