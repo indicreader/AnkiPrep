@@ -165,7 +165,7 @@ class WifiP2pManager(private val context: Context) {
                 // 2. Read Auth Result
                 val authorized = input.readBoolean()
                 if (!authorized) {
-                    _syncState.value = SyncState.Error("Invalid PIN authorization")
+                    _syncState.value = SyncState.Error("Invalid PIN entered. Please check the PIN on the other phone and try again.")
                     socket.close()
                     return@launch
                 }
@@ -173,20 +173,15 @@ class WifiP2pManager(private val context: Context) {
                 // PIN is valid, start transfer
                 _syncState.value = SyncState.Transferring
 
-                // 3. Determine flow based on Mode
-                // If Sender is SendMode -> Server receives.
-                // If Sender is ReceiveMode -> Server sends.
-                // So here, the Sender initiates writing or reading.
-                // Send mode: write our backup ZIP. Receive mode: read incoming backup ZIP.
                 if (isSendMode) {
                     output.writeBoolean(true) // Indicate we are sending
                     output.flush()
 
                     val success = BackupRestoreUtils.exportBackup(context, output)
                     if (success) {
-                        _syncState.value = SyncState.Success("Data sent successfully to peer!")
+                        _syncState.value = SyncState.Success("All decks and study data sent successfully!")
                     } else {
-                        _syncState.value = SyncState.Error("Failed to pack/send database backup")
+                        _syncState.value = SyncState.Error("Failed to pack or send data.")
                     }
                 } else {
                     output.writeBoolean(false) // Indicate we are receiving
@@ -194,14 +189,14 @@ class WifiP2pManager(private val context: Context) {
 
                     val success = BackupRestoreUtils.importBackup(context, input)
                     if (success) {
-                        _syncState.value = SyncState.Success("Database mirrored successfully from peer!")
+                        _syncState.value = SyncState.Success("Data received and synchronized successfully!")
                     } else {
-                        _syncState.value = SyncState.Error("Failed to restore incoming database")
+                        _syncState.value = SyncState.Error("Failed to process incoming data.")
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Connection failed", e)
-                _syncState.value = SyncState.Error("Sync failed: ${e.message}")
+                _syncState.value = SyncState.Error("Connection failed: ${e.message}")
             } finally {
                 stopAll()
             }
@@ -222,7 +217,7 @@ class WifiP2pManager(private val context: Context) {
 
             if (!isAuthorized) {
                 Log.w(TAG, "Client authorization failed (PIN mismatch)")
-                _syncState.value = SyncState.Error("Handshake failed: Invalid PIN")
+                _syncState.value = SyncState.Error("Incorrect PIN entered on the other device.")
                 return
             }
 
@@ -231,21 +226,19 @@ class WifiP2pManager(private val context: Context) {
             // 2. Read mode direction from client
             val clientSending = input.readBoolean()
 
-            // If client is sending, we receive.
-            // If client is receiving, we send.
             if (clientSending) {
                 val success = BackupRestoreUtils.importBackup(context, input)
                 if (success) {
-                    _syncState.value = SyncState.Success("Database mirrored successfully from peer!")
+                    _syncState.value = SyncState.Success("Data received and synchronized successfully!")
                 } else {
-                    _syncState.value = SyncState.Error("Failed to restore peer's database")
+                    _syncState.value = SyncState.Error("Failed to process incoming data.")
                 }
             } else {
                 val success = BackupRestoreUtils.exportBackup(context, output)
                 if (success) {
-                    _syncState.value = SyncState.Success("Data sent successfully to peer!")
+                    _syncState.value = SyncState.Success("All decks and study data sent successfully!")
                 } else {
-                    _syncState.value = SyncState.Error("Failed to pack/send local database")
+                    _syncState.value = SyncState.Error("Failed to pack or send data.")
                 }
             }
         } catch (e: Exception) {

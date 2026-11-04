@@ -69,8 +69,8 @@ fun BackupSyncCategoryScreen(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             SettingActionItem(
-                title = "Local Wi-Fi Sync Portal",
-                description = "Synchronize cards and decks across devices on the same Wi-Fi network",
+                title = "Wi-Fi Direct Transfer (Send & Receive)",
+                description = "Fast, offline transfer of decks and study progress to another device on the same Wi-Fi",
                 icon = Icons.Outlined.Wifi,
                 onClick = onOpenLocalWifiSync,
                 trailingText = "Open"

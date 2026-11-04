@@ -1,10 +1,8 @@
 package com.example.flashcardapp.ui
 
 import android.net.nsd.NsdServiceInfo
-import android.widget.Toast
-import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.border
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,11 +11,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Send
-import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,8 +29,11 @@ import androidx.compose.ui.unit.sp
 import com.example.flashcardapp.data.sync.SyncState
 import com.example.flashcardapp.data.sync.WifiP2pManager
 
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Refresh
+enum class ActiveSyncRole {
+    NONE,
+    SENDER,
+    RECEIVER
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,7 +44,7 @@ fun SyncScreen(
     val wifiManager = remember { WifiP2pManager(context) }
     val syncState by wifiManager.syncState.collectAsState()
 
-    var selectedTab by remember { mutableStateOf(0) } // 0: Send, 1: Receive
+    var activeRole by remember { mutableStateOf(ActiveSyncRole.NONE) }
     var showPinDialog by remember { mutableStateOf(false) }
     var targetPeer by remember { mutableStateOf<NsdServiceInfo?>(null) }
     var pinValue by remember { mutableStateOf("") }
@@ -60,7 +58,7 @@ fun SyncScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Local Wi-Fi Sync Engine", fontWeight = FontWeight.Bold) },
+                title = { Text("Wi-Fi Direct Transfer", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -80,7 +78,7 @@ fun SyncScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Description banner
+            // Informational Banner
             Surface(
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
                 shape = RoundedCornerShape(16.dp),
@@ -92,97 +90,230 @@ fun SyncScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Outlined.Info,
+                        Icons.Outlined.Wifi,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Sync SQLite databases, flashcards, review states, and image resources instantly over local Wi-Fi networks.",
+                        text = "Transfer flashcards, decks, review history, and images between devices on the same Wi-Fi with zero data usage.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                 }
             }
 
-            // Tabs
-            TabRow(
-                selectedTabIndex = selectedTab,
-                containerColor = Color.Transparent,
-                divider = {}
-            ) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = {
-                        selectedTab = 0
-                        wifiManager.stopAll()
-                    },
-                    text = { Text("Push Local Data", fontWeight = FontWeight.Bold) }
+            // Primary Send / Receive Action Cards (Visible when Idle)
+            if (syncState is SyncState.Idle) {
+                Text(
+                    text = "Select Action",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = {
-                        selectedTab = 1
-                        wifiManager.stopAll()
-                    },
-                    text = { Text("Pull/Receive Data", fontWeight = FontWeight.Bold) }
-                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // SEND Card
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(150.dp)
+                            .clickable {
+                                activeRole = ActiveSyncRole.SENDER
+                                wifiManager.startAdvertising(sendMode = true)
+                            },
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                        ),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.SpaceBetween,
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Send,
+                                        contentDescription = "Send",
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Column {
+                                Text(
+                                    text = "SEND",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                                Text(
+                                    text = "Share decks & progress with another phone",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    }
+
+                    // RECEIVE Card
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(150.dp)
+                            .clickable {
+                                activeRole = ActiveSyncRole.RECEIVER
+                                wifiManager.startDiscovery()
+                            },
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                        ),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.SpaceBetween,
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Share,
+                                        contentDescription = "Receive",
+                                        tint = MaterialTheme.colorScheme.onSecondary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                            Column {
+                                Text(
+                                    text = "RECEIVE",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Text(
+                                    text = "Receive data from another nearby device",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Quick Setup Guide
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "How to Transfer:",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "1. Connect both devices to the same local Wi-Fi or turn on a portable hotspot.\n" +
+                                   "2. On one device, tap SEND. A 4-digit security PIN will be shown.\n" +
+                                   "3. On the other device, tap RECEIVE, choose the sender, and enter the PIN.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 20.sp
+                        )
+                    }
+                }
             }
 
-            // Sync State Info Card
+            // Active Transfer / Pairing State Card
             if (syncState !is SyncState.Idle) {
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(20.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         Text(
-                            text = "Status: ${getStatusLabel(syncState)}",
+                            text = getStatusLabel(syncState),
                             fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
                             color = getStatusColor(syncState)
                         )
 
                         when (val state = syncState) {
                             is SyncState.Advertising -> {
                                 Text(
-                                    text = "Share this 4-Digit PIN with the other device to securely authenticate.",
-                                    fontSize = 12.sp,
+                                    text = "Enter this 4-Digit Security PIN on the receiving device to connect:",
+                                    fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center
                                 )
 
                                 Surface(
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
                                 ) {
                                     Text(
                                         text = state.pin,
-                                        fontSize = 32.sp,
+                                        fontSize = 36.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         fontFamily = FontFamily.Monospace,
-                                        letterSpacing = 8.sp,
-                                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                                        letterSpacing = 10.sp,
+                                        modifier = Modifier.padding(horizontal = 28.dp, vertical = 14.dp),
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                 }
+
+                                Text(
+                                    text = "Broadcasting on local network • Waiting for receiver to pair...",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                             is SyncState.Success -> {
                                 Icon(
                                     Icons.Outlined.CheckCircle,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(36.dp)
+                                    modifier = Modifier.size(44.dp)
                                 )
                                 Text(
                                     text = state.message,
                                     textAlign = TextAlign.Center,
-                                    style = MaterialTheme.typography.bodyMedium
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
                             is SyncState.Error -> {
@@ -195,27 +326,34 @@ fun SyncScreen(
                             }
                             else -> {
                                 LinearProgressIndicator(
-                                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(4.dp)),
                                     color = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
 
                         Spacer(modifier = Modifier.height(4.dp))
+
                         if (syncState !is SyncState.Success && syncState !is SyncState.Error) {
                             OutlinedButton(
-                                onClick = { wifiManager.stopAll() },
+                                onClick = {
+                                    activeRole = ActiveSyncRole.NONE
+                                    wifiManager.stopAll()
+                                },
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(10.dp)
                             ) {
-                                Text("Cancel / Stop Connection")
+                                Text("Cancel")
                             }
                         } else {
-                            val context = LocalContext.current
                             Button(
                                 onClick = {
-                                    val isReceiveSuccess = (syncState as? SyncState.Success)?.message?.contains("mirrored", ignoreCase = true) == true
+                                    val isReceiveSuccess = (syncState as? SyncState.Success)?.message?.contains("mirrored", ignoreCase = true) == true ||
+                                            (syncState as? SyncState.Success)?.message?.contains("received", ignoreCase = true) == true
+                                    activeRole = ActiveSyncRole.NONE
                                     wifiManager.stopAll()
                                     if (isReceiveSuccess) {
                                         val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
@@ -227,134 +365,17 @@ fun SyncScreen(
                                         java.lang.System.exit(0)
                                     }
                                 },
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(10.dp)
                             ) {
-                                Text("OK")
+                                Text("Done")
                             }
                         }
                     }
                 }
             }
 
-            // Tab Content
-            if (syncState is SyncState.Idle) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = "Choose Connection Method",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    if (selectedTab == 0) {
-                        // "Push Local Data" options
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { wifiManager.startDiscovery() },
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Search,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Column {
-                                    Text("Scan for a Receiver", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                                    Text("Find and connect to a device waiting to receive your data.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { wifiManager.startAdvertising(sendMode = true) },
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Share,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Column {
-                                    Text("Host / Advertise as Sender", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                                    Text("Start a hotspot/server and let the receiving device connect to you.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                    } else {
-                        // "Pull/Receive Data" options
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { wifiManager.startAdvertising(sendMode = false) },
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Share,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Column {
-                                    Text("Host / Advertise as Receiver", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                                    Text("Start a hotspot/server, display a PIN, and wait for a sender.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { wifiManager.startDiscovery() },
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Search,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.secondary,
-                                    modifier = Modifier.size(32.dp)
-                                )
-                                Column {
-                                    Text("Scan for a Sender", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                                    Text("Find and connect to a device hosting the data.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                    }
-                }
-            } else if (syncState is SyncState.Discovering || syncState is SyncState.DiscoveredPeers) {
-                // Show list of discovered devices
+            // Receiver Device List (when in Discovery mode)
+            if (syncState is SyncState.Discovering || syncState is SyncState.DiscoveredPeers) {
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -365,42 +386,53 @@ fun SyncScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (selectedTab == 0) "Discovered Receivers" else "Discovered Senders",
+                            text = "Nearby Devices Sharing Data",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
 
                         IconButton(onClick = { wifiManager.startDiscovery() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Scan")
+                            Icon(Icons.Default.Refresh, contentDescription = "Scan Again")
                         }
                     }
 
                     if (syncState is SyncState.Discovering) {
                         Box(
-                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                CircularProgressIndicator(color = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary)
-                                Text("Scanning local Wi-Fi subnet...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.secondary)
+                                Text("Searching local Wi-Fi for senders...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     } else {
                         val peers = (syncState as SyncState.DiscoveredPeers).peers
                         if (peers.isEmpty()) {
                             Box(
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("No peer devices discovered. Make sure AnkiPrep is open on both devices on the same Wi-Fi.", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                                Text(
+                                    text = "No senders found. Make sure the other phone has tapped SEND and is on the same Wi-Fi network.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                             }
                         } else {
                             LazyColumn(
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 items(peers) { peer ->
                                     Card(
@@ -411,7 +443,9 @@ fun SyncScreen(
                                                 pinValue = ""
                                                 showPinDialog = true
                                             },
-                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                                     ) {
                                         Row(
                                             modifier = Modifier.padding(16.dp),
@@ -419,10 +453,19 @@ fun SyncScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Column {
-                                                Text(peer.serviceName, fontWeight = FontWeight.Bold)
-                                                Text("IP: ${peer.host?.hostAddress ?: "Resolving..."}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text(peer.serviceName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                                                Text("IP: ${peer.host?.hostAddress ?: "Connecting..."}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
-                                            Icon(Icons.Outlined.Send, contentDescription = null, tint = if (selectedTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary)
+                                            Button(
+                                                onClick = {
+                                                    targetPeer = peer
+                                                    pinValue = ""
+                                                    showPinDialog = true
+                                                },
+                                                shape = RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text("Pair")
+                                            }
                                         }
                                     }
                                 }
@@ -439,16 +482,17 @@ fun SyncScreen(
     if (showPinDialog && targetPeer != null) {
         AlertDialog(
             onDismissRequest = { showPinDialog = false },
-            title = { Text("Pair with Peer") },
+            title = { Text("Pair with Sender") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Enter the 4-digit security PIN displayed on ${targetPeer?.serviceName}:")
+                    Text("Enter the 4-digit PIN displayed on ${targetPeer?.serviceName}:")
                     OutlinedTextField(
                         value = pinValue,
                         onValueChange = { if (it.length <= 4) pinValue = it },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        label = { Text("PIN Code") },
-                        modifier = Modifier.fillMaxWidth()
+                        label = { Text("4-Digit PIN") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
                     )
                 }
             },
@@ -456,11 +500,11 @@ fun SyncScreen(
                 Button(
                     onClick = {
                         showPinDialog = false
-                        wifiManager.connectToPeer(targetPeer!!, pinValue, sendMode = (selectedTab == 0))
+                        wifiManager.connectToPeer(targetPeer!!, pinValue, sendMode = false)
                     },
                     enabled = pinValue.length == 4
                 ) {
-                    Text("Sync Data")
+                    Text("Connect & Receive")
                 }
             },
             dismissButton = {
@@ -474,14 +518,14 @@ fun SyncScreen(
 
 private fun getStatusLabel(state: SyncState): String {
     return when (state) {
-        SyncState.Idle -> "Idle"
-        is SyncState.Advertising -> "Advertising Server (Waiting for client...)"
-        SyncState.Discovering -> "Discovering Nearby Devices..."
-        is SyncState.DiscoveredPeers -> "Discovered Peers"
+        SyncState.Idle -> "Ready"
+        is SyncState.Advertising -> "Ready to Send"
+        SyncState.Discovering -> "Searching for Nearby Devices..."
+        is SyncState.DiscoveredPeers -> "Devices Found"
         is SyncState.Connecting -> "Connecting to ${state.peerName}..."
-        SyncState.Transferring -> "Transferring SQLite Database..."
-        is SyncState.Success -> "Success!"
-        is SyncState.Error -> "Sync Error"
+        SyncState.Transferring -> "Transferring Decks & Study History..."
+        is SyncState.Success -> "Transfer Complete!"
+        is SyncState.Error -> "Transfer Error"
     }
 }
 
@@ -490,6 +534,6 @@ private fun getStatusColor(state: SyncState): Color {
     return when (state) {
         is SyncState.Success -> MaterialTheme.colorScheme.primary
         is SyncState.Error -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.secondary
+        else -> MaterialTheme.colorScheme.primary
     }
 }
