@@ -351,19 +351,8 @@ fun SyncScreen(
                         } else {
                             Button(
                                 onClick = {
-                                    val isReceiveSuccess = (syncState as? SyncState.Success)?.message?.contains("mirrored", ignoreCase = true) == true ||
-                                            (syncState as? SyncState.Success)?.message?.contains("received", ignoreCase = true) == true
                                     activeRole = ActiveSyncRole.NONE
                                     wifiManager.stopAll()
-                                    if (isReceiveSuccess) {
-                                        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                                        if (intent != null) {
-                                            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                                            context.startActivity(intent)
-                                        }
-                                        android.os.Process.killProcess(android.os.Process.myPid())
-                                        java.lang.System.exit(0)
-                                    }
                                 },
                                 shape = RoundedCornerShape(10.dp)
                             ) {

@@ -187,11 +187,11 @@ class WifiP2pManager(private val context: Context) {
                     output.writeBoolean(false) // Indicate we are receiving
                     output.flush()
 
-                    val success = BackupRestoreUtils.importBackup(context, input)
-                    if (success) {
-                        _syncState.value = SyncState.Success("Data received and synchronized successfully!")
+                    val result = SmartMergeSyncEngine.mergeIncomingBackup(context, input)
+                    if (result.success) {
+                        _syncState.value = SyncState.Success(result.message)
                     } else {
-                        _syncState.value = SyncState.Error("Failed to process incoming data.")
+                        _syncState.value = SyncState.Error(result.message)
                     }
                 }
             } catch (e: Exception) {
@@ -227,11 +227,11 @@ class WifiP2pManager(private val context: Context) {
             val clientSending = input.readBoolean()
 
             if (clientSending) {
-                val success = BackupRestoreUtils.importBackup(context, input)
-                if (success) {
-                    _syncState.value = SyncState.Success("Data received and synchronized successfully!")
+                val result = kotlinx.coroutines.runBlocking { SmartMergeSyncEngine.mergeIncomingBackup(context, input) }
+                if (result.success) {
+                    _syncState.value = SyncState.Success(result.message)
                 } else {
-                    _syncState.value = SyncState.Error("Failed to process incoming data.")
+                    _syncState.value = SyncState.Error(result.message)
                 }
             } else {
                 val success = BackupRestoreUtils.exportBackup(context, output)
