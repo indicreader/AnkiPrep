@@ -167,6 +167,18 @@ class SettingsRepository private constructor(context: Context) {
         get() = prefs.getString("backup_interval", "NONE") ?: "NONE"
         set(value) = prefs.edit().putString("backup_interval", value).apply()
 
+    var backupScheduledHour: Int
+        get() = prefs.getInt("backup_scheduled_hour", 2)
+        set(value) = prefs.edit().putInt("backup_scheduled_hour", value).apply()
+
+    var backupScheduledMinute: Int
+        get() = prefs.getInt("backup_scheduled_minute", 0)
+        set(value) = prefs.edit().putInt("backup_scheduled_minute", value).apply()
+
+    var lastBackupTimestamp: Long
+        get() = prefs.getLong("last_backup_timestamp", 0L)
+        set(value) = prefs.edit().putLong("last_backup_timestamp", value).apply()
+
     var userTarget: String
         get() = prefs.getString("user_target", "") ?: ""
         set(value) = prefs.edit().putString("user_target", value).apply()
