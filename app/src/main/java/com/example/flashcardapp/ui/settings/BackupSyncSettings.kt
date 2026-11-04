@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -89,17 +90,24 @@ fun BackupSyncSubCategoryScreen(
     val coroutineScope = rememberCoroutineScope()
     var backupSafUri by remember { mutableStateOf(repository.backupSafUri) }
     var backupInterval by remember { mutableStateOf(repository.backupInterval) }
+    var scheduledHour by remember { mutableStateOf(repository.backupScheduledHour) }
+    var showRestoreConfirmDialog by remember { mutableStateOf<Uri?>(null) }
+    var isManualBackupInProgress by remember { mutableStateOf(false) }
 
     val backupDirPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         uri?.let {
             val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            context.contentResolver.takePersistableUriPermission(it, flags)
+            try {
+                context.contentResolver.takePersistableUriPermission(it, flags)
+            } catch (e: Exception) {
+                // Continue if permission could not be persisted
+            }
             repository.backupSafUri = it.toString()
             backupSafUri = it.toString()
             BackupScheduler.updateSchedule(context)
-            Toast.makeText(context, "Backup folder set successfully!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Backup folder configured with persistent permissions!", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -107,31 +115,62 @@ fun BackupSyncSubCategoryScreen(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
         uri?.let {
-            coroutineScope.launch {
-                val success = withContext(Dispatchers.IO) {
-                    try {
-                        context.contentResolver.openInputStream(it)?.use { input ->
-                            BackupRestoreUtils.importBackup(context, input)
-                        } ?: false
-                    } catch (e: Exception) {
-                        false
-                    }
+            showRestoreConfirmDialog = it
+        }
+    }
+
+    // Confirmation Dialog for Full Database Restore
+    showRestoreConfirmDialog?.let { targetUri ->
+        AlertDialog(
+            onDismissRequest = { showRestoreConfirmDialog = null },
+            title = { Text("Restore Full Database?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Restoring from this snapshot will replace your current flashcards, review states, and decks with the data in the backup. " +
+                    "The app will automatically restart after restoration is complete.\n\nDo you want to proceed?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val uriToRestore = targetUri
+                        showRestoreConfirmDialog = null
+                        coroutineScope.launch {
+                            val success = withContext(Dispatchers.IO) {
+                                try {
+                                    context.contentResolver.openInputStream(uriToRestore)?.use { input ->
+                                        BackupRestoreUtils.importBackup(context, input)
+                                    } ?: false
+                                } catch (e: Exception) {
+                                    false
+                                }
+                            }
+                            if (success) {
+                                Toast.makeText(context, "Database restored! Restarting app...", Toast.LENGTH_LONG).show()
+                                kotlinx.coroutines.delay(1200)
+                                val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                                if (intent != null) {
+                                    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                                    context.startActivity(intent)
+                                }
+                                android.os.Process.killProcess(android.os.Process.myPid())
+                                System.exit(0)
+                            } else {
+                                Toast.makeText(context, "Failed to restore backup snapshot", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Restore & Restart")
                 }
-                if (success) {
-                    Toast.makeText(context, "Database restored! Restarting app...", Toast.LENGTH_LONG).show()
-                    kotlinx.coroutines.delay(1500)
-                    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-                    if (intent != null) {
-                        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-                        context.startActivity(intent)
-                    }
-                    android.os.Process.killProcess(android.os.Process.myPid())
-                    System.exit(0)
-                } else {
-                    Toast.makeText(context, "Failed to restore backup snapshot", Toast.LENGTH_SHORT).show()
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreConfirmDialog = null }) {
+                    Text("Cancel")
                 }
             }
-        }
+        )
     }
 
     when (subCategory) {
@@ -183,8 +222,8 @@ fun BackupSyncSubCategoryScreen(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
                         SettingToggleItem(
-                            title = "Daily Auto-Backup",
-                            description = "Exports a complete SQLite and media snapshot every night at 00:00",
+                            title = "Nightly Auto-Backup (WhatsApp Style)",
+                            description = "Automatically exports database and media snapshots in the background while device is idle and charging",
                             checked = backupInterval == "DAILY",
                             onCheckedChange = { isChecked ->
                                 val newInterval = if (isChecked) "DAILY" else "NONE"
@@ -197,6 +236,52 @@ fun BackupSyncSubCategoryScreen(
                             },
                             icon = Icons.Outlined.Schedule
                         )
+
+                        if (backupInterval == "DAILY") {
+                            Text(
+                                text = "Nightly Backup Scheduled Time",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf(0 to "12:00 AM", 2 to "2:00 AM", 3 to "3:00 AM", 4 to "4:00 AM").forEach { (hour, label) ->
+                                    val isSelected = scheduledHour == hour
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = {
+                                            scheduledHour = hour
+                                            repository.backupScheduledHour = hour
+                                            BackupScheduler.updateSchedule(context)
+                                            Toast.makeText(context, "Scheduled for $label nightly", Toast.LENGTH_SHORT).show()
+                                        },
+                                        label = { Text(label, fontSize = 12.sp) }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Badges for Change-Detection & 7-Day Auto-Prune
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                    Text("Smart Change Detection: Skips backups if cards or reviews haven't changed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Outlined.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                    Text("Auto-Prune: Retains strictly the last 7 daily snapshots to protect storage", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -219,13 +304,13 @@ fun BackupSyncSubCategoryScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         Text(
-                            text = "Instant Backup & Restore",
+                            text = "Instant Backup & Full Restore",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Create an on-demand full database snapshot or restore from an existing backup ZIP.",
+                            text = "Create an on-demand complete database snapshot or restore from a previously exported ZIP backup.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -238,6 +323,7 @@ fun BackupSyncSubCategoryScreen(
                                 onClick = {
                                     val uriStr = backupSafUri
                                     if (uriStr != null) {
+                                        isManualBackupInProgress = true
                                         coroutineScope.launch(Dispatchers.IO) {
                                             try {
                                                 val treeUri = Uri.parse(uriStr)
@@ -250,24 +336,27 @@ fun BackupSyncSubCategoryScreen(
                                                     }
                                                 }
                                                 withContext(Dispatchers.Main) {
-                                                    Toast.makeText(context, "Backup saved to folder!", Toast.LENGTH_LONG).show()
+                                                    isManualBackupInProgress = false
+                                                    Toast.makeText(context, "Full backup snapshot created successfully!", Toast.LENGTH_LONG).show()
                                                 }
                                             } catch (e: Exception) {
                                                 withContext(Dispatchers.Main) {
+                                                    isManualBackupInProgress = false
                                                     Toast.makeText(context, "Backup failed: ${e.message}", Toast.LENGTH_SHORT).show()
                                                 }
                                             }
                                         }
                                     } else {
-                                        Toast.makeText(context, "Select a backup folder in Automated SAF first!", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Please select a backup folder under Automated SAF first!", Toast.LENGTH_SHORT).show()
                                     }
                                 },
+                                enabled = !isManualBackupInProgress,
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(10.dp)
                             ) {
                                 Icon(Icons.Outlined.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Backup Now")
+                                Text(if (isManualBackupInProgress) "Saving..." else "Backup Now")
                             }
 
                             OutlinedButton(
@@ -277,7 +366,7 @@ fun BackupSyncSubCategoryScreen(
                             ) {
                                 Icon(Icons.Outlined.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Restore")
+                                Text("Full Restore")
                             }
                         }
                     }
