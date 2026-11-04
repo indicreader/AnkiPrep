@@ -59,13 +59,29 @@ fun ResultsScreen(
     val wrongCount = answeredQuestions.count { !it.isCorrect }
     val weightedScore = (score * positiveMarks) + ((totalQuestions - score) * negativeMarks)
 
-    // Performance tier
-    data class PerformanceTier(val text: String, val color: Color)
+    // Performance tier & encouraging feedback
+    data class PerformanceTier(val text: String, val quote: String, val color: Color)
     val tier = when {
-        accuracy >= 90 -> PerformanceTier(com.example.flashcardapp.data.TranslationManager.getString("outstanding"), CorrectColor)
-        accuracy >= 75 -> PerformanceTier(com.example.flashcardapp.data.TranslationManager.getString("great_job"), colorScheme.primary)
-        accuracy >= 50 -> PerformanceTier(com.example.flashcardapp.data.TranslationManager.getString("keep_going"), Color(0xFFF57C00))
-        else -> PerformanceTier(com.example.flashcardapp.data.TranslationManager.getString("keep_practicing"), colorScheme.error)
+        accuracy >= 90 -> PerformanceTier(
+            com.example.flashcardapp.data.TranslationManager.getString("outstanding"),
+            "Outstanding mastery! Maintain this consistency and confidence.",
+            CorrectColor
+        )
+        accuracy >= 75 -> PerformanceTier(
+            com.example.flashcardapp.data.TranslationManager.getString("great_job"),
+            "Great job! A quick review of your mistakes will solidify your retention.",
+            colorScheme.primary
+        )
+        accuracy >= 50 -> PerformanceTier(
+            com.example.flashcardapp.data.TranslationManager.getString("keep_going"),
+            "We will reach there in some time! You are making steady progress with every session.",
+            Color(0xFFE59866)
+        )
+        else -> PerformanceTier(
+            "You can do better!",
+            "You can do better, and we will reach there! Every mistake today is a step closer to mastery tomorrow.",
+            Color(0xFFD97706)
+        )
     }
 
     // ── Animated score ring ────────────────────────────────────
@@ -158,6 +174,34 @@ fun ResultsScreen(
                             color = tier.color,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+
+                    // Encouraging Motivational Quote Card
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = tier.color.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, tier.color.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.AutoAwesome,
+                                contentDescription = null,
+                                tint = tier.color,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = tier.quote,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Medium,
+                                lineHeight = 18.sp
+                            )
+                        }
                     }
 
                     HorizontalDivider(color = colorScheme.outlineVariant)

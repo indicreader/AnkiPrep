@@ -568,6 +568,41 @@ fun MockExamScorecardView(
                 }
             }
 
+            val accuracy = scorecard.accuracyPercentage
+            val (quoteText, quoteColor) = when {
+                accuracy >= 90.0 -> "Outstanding performance! You are exam-ready." to Color(0xFF2A9D8F)
+                accuracy >= 75.0 -> "Great job! A few more revisions and you'll hit top ranks." to MaterialTheme.colorScheme.primary
+                accuracy >= 50.0 -> "We will reach there in some time! Consistent practice builds top scores." to Color(0xFFE59866)
+                else -> "You can do better, and we will reach there! Every error reviewed today is a future point earned." to Color(0xFFD97706)
+            }
+
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = quoteColor.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, quoteColor.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = quoteColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = quoteText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 18.sp
+                    )
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
 
             // Attempt Stats Row
