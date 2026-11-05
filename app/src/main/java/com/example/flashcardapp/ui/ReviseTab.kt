@@ -36,6 +36,7 @@ import kotlinx.coroutines.launch
 fun ReviseTab(
     repo: AnkiDataRepository,
     onStartSession: (deckIds: List<Long>, isStarredOnly: Boolean, sessionMode: McqSessionMode) -> Unit,
+    onStartMockExam: (deckIds: List<Long>, isStarredOnly: Boolean, positiveMarks: Float, negativePenalty: Float, durationMinutes: Int) -> Unit = { _, _, _, _, _ -> },
     isDarkMode: Boolean,
     onDarkModeToggle: () -> Unit
 ) {
@@ -58,6 +59,9 @@ fun ReviseTab(
 
     // Study Session Mode: PRACTICE, TEST, REVISION, RATED_PRIORITY
     var studyMode by remember { mutableStateOf(McqSessionMode.PRACTICE) }
+    var mockPositiveMarks by remember { mutableFloatStateOf(2.0f) }
+    var mockNegativePenalty by remember { mutableFloatStateOf(0.5f) }
+    var mockDurationMinutes by remember { mutableIntStateOf(60) }
 
     // Sync selectedDeck to first deck if null
     LaunchedEffect(decks) {
@@ -112,7 +116,7 @@ fun ReviseTab(
         ) {
             // ── Section 1: Study Filter Mode ──
             Text(
-                text = "1. SELECT REVISION SCOPE",
+                text = "SELECT REVISION SCOPE",
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
@@ -348,7 +352,7 @@ fun ReviseTab(
 
             // ── Section 3: Study Mode Selector ──
             Text(
-                text = "2. CHOOSE STUDY MODE",
+                text = "CHOOSE STUDY MODE",
                 style = MaterialTheme.typography.labelMedium.copy(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
@@ -358,9 +362,9 @@ fun ReviseTab(
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(
-                    McqSessionMode.PRACTICE to Triple("Practice Mode", "Instant answer reviews with star ratings enabled", Icons.Outlined.Quiz),
-                    McqSessionMode.RATED_PRIORITY to Triple("Priority Rated Mode", "Study only rated items (higher priority ratings first)", Icons.Filled.Star),
-                    McqSessionMode.TEST to Triple("Mock Test Mode", "Timed exam simulation, reviews provided at session end", Icons.Outlined.LibraryBooks),
+                    McqSessionMode.PRACTICE to Triple("Practice Mode", "Immediate feedback with detailed answers and hints", Icons.Outlined.Quiz),
+                    McqSessionMode.RATED_PRIORITY to Triple("Priority Read Mode", "Focuses on weak & difficult questions first, then unrated cards", Icons.Filled.Star),
+                    McqSessionMode.TEST to Triple("Mock Test Mode", "Timed exam simulation with customizable negative marking", Icons.Outlined.LibraryBooks),
                     McqSessionMode.REVISION to Triple("Smart Revision (FSRS)", "Follow Spaced Repetition scheduling algorithm", Icons.Outlined.LibraryBooks)
                 ).forEach { (mode, info) ->
                     val (title, desc, icon) = info
@@ -393,6 +397,120 @@ fun ReviseTab(
                         }
                     }
                 }
+
+                // Configurable marking scheme for Mock Test Mode
+                if (studyMode == McqSessionMode.TEST) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+                        border = BorderStroke(1.dp, colorScheme.secondary.copy(alpha = 0.4f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                "Mock Marking Scheme",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = colorScheme.onSurface
+                            )
+                            Text(
+                                "Default is +2 for correct, -0.5 for wrong (1/4th penalty). Adjust values as needed:",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colorScheme.onSurfaceVariant
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // Correct Marks Stepper
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Correct (+Marks)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        FilledTonalIconButton(
+                                            onClick = {
+                                                if (mockPositiveMarks > 0.5f) {
+                                                    mockPositiveMarks -= 0.5f
+                                                    mockNegativePenalty = (mockPositiveMarks / 4f)
+                                                }
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Text("-", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                        }
+                                        Text(
+                                            text = String.format("+%.1f", mockPositiveMarks),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.width(42.dp),
+                                            textAlign = TextAlign.Center
+                                        )
+                                        FilledTonalIconButton(
+                                            onClick = {
+                                                mockPositiveMarks += 0.5f
+                                                mockNegativePenalty = (mockPositiveMarks / 4f)
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Text("+", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                        }
+                                    }
+                                }
+
+                                // Negative Penalty Stepper
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        "Wrong (-Penalty)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colorScheme.error,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        FilledTonalIconButton(
+                                            onClick = {
+                                                if (mockNegativePenalty >= 0.25f) mockNegativePenalty -= 0.25f
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Text("-", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                        }
+                                        Text(
+                                            text = String.format("-%.2f", mockNegativePenalty),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.width(48.dp),
+                                            textAlign = TextAlign.Center
+                                        )
+                                        FilledTonalIconButton(
+                                            onClick = {
+                                                mockNegativePenalty += 0.25f
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Text("+", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             Spacer(Modifier.height(16.dp))
@@ -420,7 +538,17 @@ fun ReviseTab(
                                 "multi" -> selectedDeckIds.toList()
                                 else -> emptyList() // "starred" is global
                             }
-                            onStartSession(finalDeckIds, selectionMode == "starred", studyMode)
+                            if (studyMode == McqSessionMode.TEST) {
+                                onStartMockExam(
+                                    finalDeckIds,
+                                    selectionMode == "starred",
+                                    mockPositiveMarks,
+                                    mockNegativePenalty,
+                                    mockDurationMinutes
+                                )
+                            } else {
+                                onStartSession(finalDeckIds, selectionMode == "starred", studyMode)
+                            }
                         },
                         enabled = dynamicCardCount > 0,
                         shape = RoundedCornerShape(50),

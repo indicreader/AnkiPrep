@@ -1424,6 +1424,10 @@ class AnkiDataRepository(
     suspend fun getAllUserMetadataOnce(): List<CardUserMetadataEntity> = withContext(Dispatchers.IO) {
         cardUserMetadataDao.getAllMetadataOnce()
     }
+
+    suspend fun getAllCardStates(): List<com.example.flashcardapp.data.entities.CardStateEntity> = withContext(Dispatchers.IO) {
+        cardStateDao.getAllCardStates()
+    }
 }
 
 /**

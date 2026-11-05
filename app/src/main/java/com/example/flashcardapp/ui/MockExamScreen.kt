@@ -49,6 +49,9 @@ fun MockExamScreen(
     deckName: String,
     questions: List<Mcq>,
     preset: ExamPreset = ExamPreset.SSC_CGL,
+    positiveMarks: Float = preset.positiveMarks,
+    negativePenalty: Float = preset.negativePenalty,
+    durationMinutes: Int = preset.durationMinutes,
     onFinish: (MockExamScorecard) -> Unit,
     onBackPressed: () -> Unit
 ) {
@@ -77,7 +80,7 @@ fun MockExamScreen(
     }
 
     // Time Tracking
-    var remainingSeconds by remember { mutableLongStateOf(preset.durationMinutes * 60L) }
+    var remainingSeconds by remember { mutableLongStateOf(durationMinutes * 60L) }
     var elapsedSeconds by remember { mutableLongStateOf(0L) }
     var isSubmitting by remember { mutableStateOf(false) }
     var scorecard by remember { mutableStateOf<MockExamScorecard?>(null) }
@@ -99,8 +102,8 @@ fun MockExamScreen(
                     examTitle = preset.title,
                     questions = questions,
                     attempts = attempts,
-                    positiveMark = preset.positiveMarks,
-                    negativePenalty = preset.negativePenalty,
+                    positiveMark = positiveMarks,
+                    negativePenalty = negativePenalty,
                     totalTimeSeconds = elapsedSeconds
                 )
             }
@@ -131,7 +134,7 @@ fun MockExamScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Q ${currentIndex + 1} of $totalQuestions  •  +$preset.positiveMarks / -$preset.negativePenalty",
+                            text = "Q ${currentIndex + 1} of $totalQuestions  •  +${positiveMarks} / -${negativePenalty}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -479,8 +482,8 @@ fun MockExamScreen(
                             examTitle = preset.title,
                             questions = questions,
                             attempts = attempts,
-                            positiveMark = preset.positiveMarks,
-                            negativePenalty = preset.negativePenalty,
+                            positiveMark = positiveMarks,
+                            negativePenalty = negativePenalty,
                             totalTimeSeconds = elapsedSeconds
                         )
                     }

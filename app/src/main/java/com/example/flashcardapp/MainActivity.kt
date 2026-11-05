@@ -92,7 +92,8 @@ sealed class Screen {
         val customDeckPaths: List<String>? = null,
         val customTags: List<String>? = null,
         val isStarredOnly: Boolean = false,
-        val sessionKey: Long = System.currentTimeMillis()
+        val sessionKey: Long = System.currentTimeMillis(),
+        val allowReattempt: Boolean = false
     ) : Screen()
     data class Results(
         val deck: AnkiDeck,
@@ -109,7 +110,12 @@ sealed class Screen {
     ) : Screen()
     data class MockExam(
         val deck: AnkiDeck,
-        val preset: com.example.flashcardapp.mock.ExamPreset
+        val preset: com.example.flashcardapp.mock.ExamPreset = com.example.flashcardapp.mock.ExamPreset.SSC_CGL,
+        val customDeckIds: List<Long>? = null,
+        val isStarredOnly: Boolean = false,
+        val positiveMarks: Float = preset.positiveMarks,
+        val negativePenalty: Float = preset.negativePenalty,
+        val durationMinutes: Int = preset.durationMinutes
     ) : Screen()
 }
 
@@ -1098,7 +1104,27 @@ fun MainLayout(
                          deck = dummyDeck,
                          mode = sessionMode,
                          customDeckIds = deckIds.takeIf { !isStarredOnly && it.size > 1 },
-                         isStarredOnly = isStarredOnly
+                         isStarredOnly = isStarredOnly,
+                         allowReattempt = true
+                     )
+                 },
+                 onStartRevisionMockExam = { deckIds, isStarredOnly, positiveMarks, negativePenalty, durationMinutes ->
+                     val dummyDeck = if (isStarredOnly) {
+                         AnkiDeck(id = -200L, name = "Starred Questions")
+                     } else if (deckIds.size == 1) {
+                         val matchingDeck = decksList.find { it.id == deckIds.first() }
+                         matchingDeck ?: AnkiDeck(id = deckIds.first(), name = "Selected Deck")
+                     } else {
+                         AnkiDeck(id = -100L, name = "Selected Decks")
+                     }
+                     currentScreen = Screen.MockExam(
+                         deck = dummyDeck,
+                         preset = com.example.flashcardapp.mock.ExamPreset.SSC_CGL,
+                         customDeckIds = deckIds.takeIf { !isStarredOnly && it.size > 1 },
+                         isStarredOnly = isStarredOnly,
+                         positiveMarks = positiveMarks,
+                         negativePenalty = negativePenalty,
+                         durationMinutes = durationMinutes
                      )
                  },
                  onStartCombinedTest = { selectedPaths, selectedTags ->
@@ -1310,7 +1336,7 @@ fun MainLayout(
                         isStarredOnly = screen.isStarredOnly,
                         customDeckIds = screen.customDeckIds
                     )
-                    if (remainingUnique.isEmpty() && screen.mode != McqSessionMode.REVISION) {
+                    if (!screen.allowReattempt && remainingUnique.isEmpty() && screen.mode != McqSessionMode.REVISION) {
                         showCapacityAlert = true
                         return@withContext emptyList<Mcq>()
                     }
@@ -1348,8 +1374,8 @@ fun MainLayout(
                         targetCards = allCards
                     }
 
-                    // Exclude any attempted cards for non-revision mode
-                    if (screen.mode != McqSessionMode.REVISION) {
+                    // Exclude any attempted cards for non-revision mode unless allowReattempt is true
+                    if (!screen.allowReattempt && screen.mode != McqSessionMode.REVISION) {
                         val attemptedIds = when {
                             screen.isStarredOnly -> progressManager.getAllAttemptedCardIds().toSet()
                             screen.customDeckIds != null -> screen.customDeckIds.flatMap { progressManager.getAttemptedCardIds(it) }.toSet()
@@ -1363,46 +1389,61 @@ fun MainLayout(
                     // Select the final cards based on mode and settings
                     if (screen.mode == McqSessionMode.RATED_PRIORITY) {
                         val ratingMap = repo.getAllUserMetadataOnce().associate { it.cardId to it.rating }
-                        val ratedCards = targetCards.filter { (ratingMap[it.id] ?: 0) >= 1 }
-                        if (ratedCards.isNotEmpty()) {
-                            val sampled = mutableListOf<CardEntity>()
-                            val remaining = ratedCards.toMutableList()
-                            val limit = if (questionLimit > 0) minOf(questionLimit, remaining.size) else remaining.size
-                            val random = java.util.Random()
-                            for (step in 0 until limit) {
-                                val totalWeight = remaining.sumOf { ratingMap[it.id] ?: 1 }
-                                if (totalWeight <= 0) break
-                                val target = random.nextInt(totalWeight)
-                                var currentSum = 0
-                                var chosenIndex = -1
-                                for (i in remaining.indices) {
-                                    currentSum += ratingMap[remaining[i].id] ?: 1
-                                    if (currentSum > target) {
-                                        chosenIndex = i
-                                        break
-                                    }
-                                }
-                                if (chosenIndex != -1) {
-                                    val card = remaining.removeAt(chosenIndex)
-                                    sampled.add(card)
-                                } else {
-                                    break
-                                }
-                            }
-                            targetCards = sampled.sortedByDescending { ratingMap[it.id] ?: 0 }
-                        } else {
-                            targetCards = emptyList()
+                        val attemptsList = repo.getAllCardAttempts()
+                        val incorrectCountMap = attemptsList.filter { !it.isCorrect }.groupBy { it.cardId }.mapValues { it.value.size }
+                        val statesMap = repo.getAllCardStates().associateBy { it.cardId }
+
+                        // Priority hierarchy:
+                        // 1. Explicit user rating (>= 1 stars first, descending)
+                        // 2. Frequency of incorrect attempts (more mistakes first)
+                        // 3. FSRS difficulty (harder cards first)
+                        // 4. Stable fallback to all remaining cards
+                        targetCards = targetCards.sortedWith(
+                            compareByDescending<CardEntity> { ratingMap[it.id] ?: 0 }
+                                .thenByDescending { incorrectCountMap[it.id] ?: 0 }
+                                .thenByDescending { statesMap[it.id]?.difficulty ?: 0.0 }
+                        )
+
+                        if (questionLimit > 0 && targetCards.size > questionLimit) {
+                            targetCards = targetCards.take(questionLimit)
                         }
                     } else if (screen.mode == McqSessionMode.REVISION) {
                         val maxForRevision = if (questionLimit > 0) questionLimit else Int.MAX_VALUE
-                        targetCards = WeakCardSelector.selectWeakCards(
-                            cards = targetCards,
-                            cardAttempts = repo.getAllCardAttempts(),
-                            maxCards = maxForRevision
-                        )
-                        if (shuffleQuestions) {
-                            targetCards = targetCards.shuffled()
+                        val now = System.currentTimeMillis()
+                        val fsrsStates = repo.getAllCardStates().associateBy { it.cardId }
+
+                        // 1. Due cards according to FSRS algorithm (dueDate <= now & state > 0)
+                        val dueCards = targetCards.filter { card ->
+                            val s = fsrsStates[card.id]
+                            s != null && s.state > 0 && s.dueDate <= now
+                        }.sortedBy { fsrsStates[it.id]?.dueDate ?: 0L }
+
+                        val selected = mutableListOf<CardEntity>()
+                        selected.addAll(dueCards.take(maxForRevision))
+
+                        // 2. If due cards are fewer than limit, backfill with weak cards (historical mistakes)
+                        if (selected.size < maxForRevision) {
+                            val selectedIds = selected.map { it.id }.toSet()
+                            val remainingPool = targetCards.filter { !selectedIds.contains(it.id) }
+                            val weakCards = WeakCardSelector.selectWeakCards(
+                                cards = remainingPool,
+                                cardAttempts = repo.getAllCardAttempts(),
+                                maxCards = maxForRevision - selected.size
+                            )
+                            selected.addAll(weakCards)
                         }
+
+                        // 3. If still fewer cards, backfill with least reviewed / new cards
+                        if (selected.size < maxForRevision) {
+                            val selectedIds = selected.map { it.id }.toSet()
+                            val remainingPool = targetCards.filter { !selectedIds.contains(it.id) }
+                            val additional = remainingPool.sortedBy { card ->
+                                fsrsStates[card.id]?.reviewCount ?: 0
+                            }.take(maxForRevision - selected.size)
+                            selected.addAll(additional)
+                        }
+
+                        targetCards = if (shuffleQuestions) selected.shuffled() else selected
                     } else {
                         // Prioritize unattempted / least-attempted questions
                         val shuffledPool = targetCards.shuffled()
@@ -1737,14 +1778,14 @@ fun MainLayout(
             )
         }
         is Screen.MockExam -> {
-            var mockQuestionsState by remember(screen.deck, screen.preset) {
+            var mockQuestionsState by remember(screen.deck, screen.preset, screen.positiveMarks, screen.negativePenalty) {
                 mutableStateOf<List<Mcq>?>(null)
             }
             BackHandler {
                 currentScreen = Screen.DeckSelection
             }
 
-            LaunchedEffect(screen.deck, screen.preset) {
+            LaunchedEffect(screen.deck, screen.preset, screen.positiveMarks, screen.negativePenalty) {
                 val questions = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
                     val resolvedDeckName = if (screen.deck.id > 0) {
                         repo.getDeckById(screen.deck.id)?.fullPath ?: screen.deck.name
@@ -1752,10 +1793,16 @@ fun MainLayout(
                         screen.deck.name
                     }
                     val allCards = repo.getAllCards()
-                    val targetCards = if (screen.deck.id == 999999L || screen.deck.id < 0) {
-                        allCards
-                    } else {
-                        repo.getCardsForHierarchy(resolvedDeckName)
+                    val targetCards = when {
+                        screen.isStarredOnly -> {
+                            val starredIds = repo.getAllUserMetadataOnce().filter { it.isStarred }.map { it.cardId }.toSet()
+                            allCards.filter { starredIds.contains(it.id) }
+                        }
+                        screen.customDeckIds != null -> {
+                            allCards.filter { screen.customDeckIds.contains(it.deckId) }
+                        }
+                        screen.deck.id == 999999L || screen.deck.id < 0 -> allCards
+                        else -> repo.getCardsForHierarchy(resolvedDeckName)
                     }
                     val allAliases = repo.getAllAliases()
                     val engine = McqEngine(optionsCount = 4)
@@ -1777,6 +1824,9 @@ fun MainLayout(
                     deckName = screen.deck.name,
                     questions = mockQuestionsState!!,
                     preset = screen.preset,
+                    positiveMarks = screen.positiveMarks,
+                    negativePenalty = screen.negativePenalty,
+                    durationMinutes = screen.durationMinutes,
                     onFinish = { scorecard ->
                         currentScreen = Screen.DeckSelection
                     },

@@ -66,6 +66,7 @@ fun DeckSelectionScreen(
     onDeckOrderChanged: (List<Long>) -> Unit = {},
     repo: com.example.flashcardapp.data.AnkiDataRepository,
     onStartRevisionSession: (List<Long>, Boolean, McqSessionMode) -> Unit = { _, _, _ -> },
+    onStartRevisionMockExam: (List<Long>, Boolean, Float, Float, Int) -> Unit = { _, _, _, _, _ -> },
     onStartCombinedTest: (List<String>, List<String>) -> Unit = { _, _ -> },
     onStartMockExam: (AnkiDeck, com.example.flashcardapp.mock.ExamPreset) -> Unit = { _, _ -> },
     onOpenPlugins: () -> Unit = {},
@@ -220,6 +221,7 @@ fun DeckSelectionScreen(
                 "Revise" -> ReviseTab(
                     repo = repo,
                     onStartSession = onStartRevisionSession,
+                    onStartMockExam = onStartRevisionMockExam,
                     isDarkMode = isDarkMode,
                     onDarkModeToggle = { onDarkModeToggle(!isDarkMode) }
                 )

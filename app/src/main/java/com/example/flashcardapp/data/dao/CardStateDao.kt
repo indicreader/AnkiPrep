@@ -64,6 +64,12 @@ interface CardStateDao {
     suspend fun getCardState(cardId: Long): CardStateEntity?
 
     /**
+     * Get all FSRS card states across all cards.
+     */
+    @Query("SELECT * FROM card_states")
+    suspend fun getAllCardStates(): List<CardStateEntity>
+
+    /**
      * Insert or update card state. Uses REPLACE strategy
      * since cardId is the primary key.
      */
