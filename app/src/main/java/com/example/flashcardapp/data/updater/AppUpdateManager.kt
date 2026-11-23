@@ -2,8 +2,11 @@ package com.example.flashcardapp.data.updater
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
+import android.util.Log
 import androidx.core.content.FileProvider
 import com.example.flashcardapp.data.SettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -161,18 +164,81 @@ class AppUpdateManager(private val context: Context) {
         }
     }
 
-    fun triggerInstall(apkFile: File) {
-        val uri = FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.provider",
-            apkFile
-        )
-
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+    fun canInstallPackages(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.packageManager.canRequestPackageInstalls()
+        } else {
+            true
         }
-        context.startActivity(intent)
+    }
+
+    fun openInstallPermissionSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                Log.e("AppUpdateManager", "Failed to open install permission settings", e)
+                try {
+                    val fallbackIntent = Intent(Settings.ACTION_SECURITY_SETTINGS).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(fallbackIntent)
+                } catch (e2: Exception) {
+                    Log.e("AppUpdateManager", "Failed to open security settings fallback", e2)
+                }
+            }
+        }
+    }
+
+    fun triggerInstall(apkFile: File): Boolean {
+        if (!apkFile.exists() || apkFile.length() == 0L) {
+            Log.e("AppUpdateManager", "APK file missing or empty: ${apkFile.absolutePath}")
+            return false
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !canInstallPackages()) {
+            Log.w("AppUpdateManager", "REQUEST_INSTALL_PACKAGES not granted. Redirecting to settings.")
+            openInstallPermissionSettings()
+            return false
+        }
+
+        return try {
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                apkFile
+            )
+
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+
+            // Explicitly grant URI read permission to any matching package installers (critical for Android 8-15 OEM skins)
+            val resolveList = context.packageManager.queryIntentActivities(
+                intent,
+                PackageManager.MATCH_DEFAULT_ONLY
+            )
+            for (resolveInfo in resolveList) {
+                context.grantUriPermission(
+                    resolveInfo.activityInfo.packageName,
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+
+            context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.e("AppUpdateManager", "Failed to launch package installer", e)
+            false
+        }
     }
 
     private fun isVersionNewer(remoteVersion: String, localVersion: String): Boolean {

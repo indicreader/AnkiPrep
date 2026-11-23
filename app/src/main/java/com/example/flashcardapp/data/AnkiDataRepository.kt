@@ -915,12 +915,89 @@ class AnkiDataRepository(
         deckDao.deleteDeck(deckId)
     }
 
-    suspend fun deleteDeckByPath(fullPath: String): Unit = withContext(Dispatchers.IO) {
-        Log.d(TAG, "Deleting deck hierarchy by path: $fullPath")
+    suspend fun deleteDeckByPath(fullPath: String, deleteChildren: Boolean = true): Unit = withContext(Dispatchers.IO) {
+        Log.d(TAG, "Deleting deck by path: $fullPath (deleteChildren=$deleteChildren)")
         val allDecks = deckDao.getAllDecksOnce()
-        val targets = allDecks.filter { it.fullPath == fullPath || it.fullPath.startsWith("$fullPath::") }
-        targets.forEach { target ->
-            deleteDeck(target.id)
+        if (deleteChildren) {
+            val targets = allDecks.filter { it.fullPath == fullPath || it.fullPath.startsWith("$fullPath::") }
+            targets.forEach { target ->
+                deleteDeck(target.id)
+            }
+        } else {
+            // Delete parent container only, promote children up one level
+            val targetParent = allDecks.firstOrNull { it.fullPath == fullPath }
+            if (targetParent != null) {
+                AppDatabase.getInstance(context).withTransaction {
+                    // Promote all descendants: remove the "fullPath::" prefix
+                    allDecks.filter { it.fullPath.startsWith("$fullPath::") }.forEach { child ->
+                        val newPath = child.fullPath.removePrefix("$fullPath::")
+                        val newName = newPath.split("::").last()
+                        val updatedChild = child.copy(
+                            name = newName,
+                            fullPath = newPath,
+                            parentDeckId = null,
+                            lastSyncTimestamp = System.currentTimeMillis()
+                        )
+                        deckDao.updateDeck(updatedChild)
+                        cardDao.updateCardsHierarchyForDeck(child.id, newPath)
+                    }
+                    // Delete the parent container deck itself
+                    deleteDeck(targetParent.id)
+                }
+                ensureParentDecksExist()
+            }
+        }
+    }
+
+    /**
+     * Unnests a subdeck from its parent hierarchy, promoting it to a top-level root deck.
+     * Also updates any descendant subdecks under this deck.
+     */
+    suspend fun unnestDeck(subdeckFullPath: String): Unit = withContext(Dispatchers.IO) {
+        val cleanPath = subdeckFullPath.trim()
+        if (!cleanPath.contains("::")) return@withContext // Already a root deck
+        Log.d(TAG, "Unnesting deck '$cleanPath' to root")
+
+        val newRootName = cleanPath.substringAfterLast("::")
+        AppDatabase.getInstance(context).withTransaction {
+            val allDecks = deckDao.getAllDecksOnce().toMutableList()
+            val targetDeck = allDecks.firstOrNull { it.fullPath == cleanPath } ?: return@withTransaction
+
+            // 1. Update target deck itself to root
+            val updatedDeck = targetDeck.copy(
+                name = newRootName,
+                fullPath = newRootName,
+                parentDeckId = null,
+                lastSyncTimestamp = System.currentTimeMillis()
+            )
+            deckDao.updateDeck(updatedDeck)
+            cardDao.updateCardsHierarchyForDeck(targetDeck.id, newRootName)
+
+            // 2. Update all descendant subdecks
+            for (subDeck in allDecks) {
+                if (subDeck.fullPath.startsWith("$cleanPath::")) {
+                    val suffix = subDeck.fullPath.removePrefix(cleanPath)
+                    val newChildFullPath = newRootName + suffix
+                    val updatedSub = subDeck.copy(
+                        fullPath = newChildFullPath,
+                        lastSyncTimestamp = System.currentTimeMillis()
+                    )
+                    deckDao.updateDeck(updatedSub)
+                    cardDao.updateCardsHierarchyForDeck(subDeck.id, newChildFullPath)
+                }
+            }
+        }
+        ensureParentDecksExist()
+    }
+
+    /**
+     * Unnests multiple subdecks to root in batch.
+     */
+    suspend fun unnestDecks(deckPaths: List<String>): Unit = withContext(Dispatchers.IO) {
+        Log.d(TAG, "Unnesting ${deckPaths.size} decks in batch")
+        val sortedPaths = deckPaths.filter { it.contains("::") }.sortedByDescending { it.split("::").size }
+        sortedPaths.forEach { path ->
+            unnestDeck(path)
         }
     }
 

@@ -203,7 +203,8 @@ fun DeckOptionsMenu(
     onMoveUp: (() -> Unit)? = null,
     onMoveDown: (() -> Unit)? = null,
     onClubIntoAnother: (() -> Unit)? = null,
-    onMockExam: (() -> Unit)? = null
+    onMockExam: (() -> Unit)? = null,
+    onUnnest: (() -> Unit)? = null
 ) {
     DropdownMenu(
         expanded = expanded, 
@@ -251,6 +252,13 @@ fun DeckOptionsMenu(
             leadingIcon = { Icon(Icons.Default.Edit, null, tint = MaterialTheme.colorScheme.secondary) },
             onClick = { onDismiss(); onRename() }
         )
+        if (onUnnest != null) {
+            DropdownMenuItem(
+                text = { Text("Unnest Subdeck (Move to Root)") },
+                leadingIcon = { Icon(Icons.Default.DriveFileMove, null, tint = MaterialTheme.colorScheme.primary) },
+                onClick = { onDismiss(); onUnnest() }
+            )
+        }
         DropdownMenuItem(
             text = { Text("Club into Another Deck...") },
             leadingIcon = { Icon(Icons.Default.CallMerge, null, tint = MaterialTheme.colorScheme.secondary) },
@@ -268,7 +276,7 @@ fun DeckOptionsMenu(
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
         DropdownMenuItem(
-            text = { Text("Delete Deck", color = MaterialTheme.colorScheme.error) },
+            text = { Text(if (node.fullPath.contains("::")) "Delete Subdeck" else "Delete Deck", color = MaterialTheme.colorScheme.error) },
             leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
             onClick = { onDismiss(); onDelete() }
         )
@@ -323,6 +331,125 @@ fun ConfirmDialog(title: String, body: String, confirmLabel: String, danger: Boo
         },
         dismissButton = { 
             TextButton(onClick = onDismiss) { Text("Cancel", color = MaterialTheme.colorScheme.primary) } 
+        }
+    )
+}
+
+@Composable
+fun DeleteDeckDialog(
+    node: DeckNode,
+    totalCards: Int,
+    onConfirm: (deleteChildren: Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val hasChildren = node.children.isNotEmpty()
+    var deleteSubdecks by remember { mutableStateOf(true) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                if (node.fullPath.contains("::")) "Delete Subdeck" else "Delete Deck",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (hasChildren) {
+                    Text(
+                        "'${node.shortName}' contains ${node.children.size} subdeck(s) ($totalCards total questions). Choose how to proceed:",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth().clickable { deleteSubdecks = true }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = deleteSubdecks,
+                                onClick = { deleteSubdecks = true }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    "Delete Deck & All Subdecks",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Text(
+                                    "Permanently deletes '${node.shortName}' and all ${node.children.size} subdecks.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth().clickable { deleteSubdecks = false }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = !deleteSubdecks,
+                                onClick = { deleteSubdecks = false }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    "Delete Container Only (Keep Subdecks)",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    "Promotes all ${node.children.size} subdecks to root level. Cards are kept.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                } else if (node.fullPath.contains("::")) {
+                    Text(
+                        "Delete subdeck '${node.shortName}' and all its cards? Parent and sibling decks will be preserved.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Text(
+                        "Delete '${node.shortName}' and all its cards? This cannot be undone.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(deleteSubdecks) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (deleteSubdecks) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text(
+                    if (hasChildren && !deleteSubdecks) "Delete Container" else "Delete",
+                    color = Color.White
+                )
+            }
+        },
+        dismissButton = { 
+            TextButton(onClick = onDismiss) { Text("Cancel") } 
         }
     )
 }
@@ -977,10 +1104,24 @@ fun ReviewTab(
             onDismiss = { renameNode = null })
     }
     deleteNode?.let { node ->
-        ConfirmDialog(title = "Delete Deck", body = "Delete '${node.shortName}' and all its cards? This cannot be undone.",
-            confirmLabel = "Delete", danger = true,
-            onConfirm = { onDeleteDeck(node.fullPath); deleteNode = null },
-            onDismiss = { deleteNode = null })
+        DeleteDeckDialog(
+            node = node,
+            totalCards = getRecursiveCardCount(node),
+            onConfirm = { deleteChildren ->
+                coroutineScope.launch {
+                    repo.deleteDeckByPath(node.fullPath, deleteChildren = deleteChildren)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            if (deleteChildren) "Deleted '${node.shortName}'" else "Promoted subdecks to root",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+                deleteNode = null
+            },
+            onDismiss = { deleteNode = null }
+        )
     }
     clearNode?.let { node ->
         ConfirmDialog(title = "Clear Progress", body = "Reset study progress for '${node.shortName}'? Cards are kept.",
@@ -1692,7 +1833,17 @@ fun ReviewTab(
                                             onMoveUp = if (canMoveUp) { { moveDeckInTree(node, -1) } } else null,
                                             onMoveDown = if (canMoveDown) { { moveDeckInTree(node, 1) } } else null,
                                             onClubIntoAnother = { singleClubNode = node },
-                                            onMockExam = { mockExamNode = node }
+                                            onMockExam = { mockExamNode = node },
+                                            onUnnest = if (node.fullPath.contains("::")) {
+                                                {
+                                                    coroutineScope.launch {
+                                                        repo.unnestDeck(node.fullPath)
+                                                        withContext(Dispatchers.Main) {
+                                                            Toast.makeText(context, "Unnested '${node.shortName}' to root", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    }
+                                                }
+                                            } else null
                                         )
                                     }
                                 }
@@ -1812,6 +1963,32 @@ fun ReviewTab(
                             Icon(Icons.Default.FolderShared, null, modifier = Modifier.size(15.dp))
                             Spacer(Modifier.width(3.dp))
                             Text("Nest", maxLines = 1, style = MaterialTheme.typography.labelSmall)
+                        }
+
+                        if (selectedNodePaths.any { it.contains("::") }) {
+                            Button(
+                                onClick = {
+                                    val pathsToUnnest = selectedNodePaths.filter { it.contains("::") }.toList()
+                                    coroutineScope.launch {
+                                        repo.unnestDecks(pathsToUnnest)
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, "Unnested ${pathsToUnnest.size} subdecks to root", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                    selectedNodePaths = emptySet()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.DriveFileMove, null, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(3.dp))
+                                Text("Unnest", maxLines = 1, style = MaterialTheme.typography.labelSmall)
+                            }
                         }
 
                         Button(
