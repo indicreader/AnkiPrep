@@ -24,6 +24,16 @@ data class AnkiFlashcard(
 )
 
 /**
+ * Configuration for dynamically mapping Anki note fields to AnkiPrep question and answer fields.
+ */
+data class AnkiDroidFieldMapping(
+    val questionFieldIndex: Int = 0,
+    val answerFieldIndex: Int = 1,
+    val explanationFieldIndex: Int? = null,
+    val optionFieldIndices: List<Int> = emptyList()
+)
+
+/**
  * Read-only bridge to the AnkiDroid content provider.
  *
  * Queries decks, cards, and notes via the standard AnkiDroid API content URIs. All access is
@@ -199,6 +209,172 @@ object AnkiDroidBridge {
                 TAG,
                 "Loaded ${cardsList.size} cards for deck $deckId (${cardsList.count { it.tags.isNotEmpty() }} have tags)"
         )
+        return cardsList
+    }
+
+    /**
+     * Inspects the field values of the first [limit] notes in a deck to detect structure and allow mapping.
+     */
+    fun getNoteFieldSamples(context: Context, deckId: Long, limit: Int = 3): List<List<String>> {
+        val samples = mutableListOf<List<String>>()
+        if (!hasPermission(context)) return emptyList()
+
+        try {
+            val noteIds = mutableListOf<Long>()
+            context.contentResolver.query(
+                CARDS_URI,
+                arrayOf("note_id"),
+                "deck_id = ?",
+                arrayOf(deckId.toString()),
+                null
+            )?.use { cursor ->
+                val noteIdCol = cursor.getColumnIndex("note_id")
+                if (noteIdCol >= 0) {
+                    while (cursor.moveToNext() && noteIds.size < limit) {
+                        noteIds.add(cursor.getLong(noteIdCol))
+                    }
+                }
+            }
+
+            if (noteIds.isEmpty()) return emptyList()
+
+            val placeholders = noteIds.joinToString(",") { "?" }
+            val selection = "_id IN ($placeholders)"
+            val selectionArgs = noteIds.map { it.toString() }.toTypedArray()
+
+            context.contentResolver.query(
+                NOTES_URI,
+                arrayOf("_id", "flds"),
+                selection,
+                selectionArgs,
+                null
+            )?.use { cursor ->
+                val fldsCol = cursor.getColumnIndex("flds")
+                if (fldsCol >= 0) {
+                    while (cursor.moveToNext()) {
+                        val flds = cursor.getString(fldsCol) ?: ""
+                        samples.add(flds.split("\u001f"))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching field samples for deck $deckId", e)
+        }
+        return samples
+    }
+
+    /**
+     * Fetches cards for [deckId] using custom field mapping.
+     */
+    fun getCardsAndNotesWithMapping(
+        context: Context,
+        deckId: Long,
+        mapping: AnkiDroidFieldMapping
+    ): List<AnkiFlashcard> {
+        val cardsList = mutableListOf<AnkiFlashcard>()
+        if (!hasPermission(context)) {
+            return getCardsAndNotesForDeck(context, deckId)
+        }
+
+        val cardIds = mutableListOf<Long>()
+        val noteIds = mutableListOf<Long>()
+
+        // Pass 1: Query cards
+        try {
+            context.contentResolver.query(
+                CARDS_URI,
+                arrayOf("_id", "note_id", "deck_id"),
+                "deck_id = ?",
+                arrayOf(deckId.toString()),
+                null
+            )?.use { cursor ->
+                val idCol = cursor.getColumnIndex("_id")
+                val noteIdCol = cursor.getColumnIndex("note_id")
+                if (idCol >= 0 && noteIdCol >= 0) {
+                    while (cursor.moveToNext()) {
+                        cardIds.add(cursor.getLong(idCol))
+                        noteIds.add(cursor.getLong(noteIdCol))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying cards for deck $deckId", e)
+            return cardsList
+        }
+
+        if (noteIds.isEmpty()) return cardsList
+
+        // Pass 2: Query notes
+        data class NoteData(val fields: String, val tags: String)
+        val notesMap = mutableMapOf<Long, NoteData>()
+        try {
+            noteIds.distinct().chunked(500).forEach { chunk ->
+                val placeholders = chunk.joinToString(",") { "?" }
+                val selection = "_id IN ($placeholders)"
+                val selectionArgs = chunk.map { it.toString() }.toTypedArray()
+
+                context.contentResolver.query(
+                    NOTES_URI,
+                    arrayOf("_id", "flds", "tags"),
+                    selection,
+                    selectionArgs,
+                    null
+                )?.use { cursor ->
+                    val idCol = cursor.getColumnIndex("_id")
+                    val fldsCol = cursor.getColumnIndex("flds")
+                    val tagsCol = cursor.getColumnIndex("tags")
+                    if (idCol >= 0 && fldsCol >= 0) {
+                        while (cursor.moveToNext()) {
+                            val id = cursor.getLong(idCol)
+                            val flds = cursor.getString(fldsCol) ?: ""
+                            val tags = if (tagsCol >= 0) cursor.getString(tagsCol) ?: "" else ""
+                            notesMap[id] = NoteData(flds, tags)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying notes for deck $deckId", e)
+        }
+
+        // Pass 3: Map fields dynamically
+        for (i in cardIds.indices) {
+            val cardId = cardIds[i]
+            val noteId = noteIds[i]
+            val noteData = notesMap[noteId] ?: continue
+            val fields = noteData.fields.split("\u001f")
+
+            val rawFront = fields.getOrNull(mapping.questionFieldIndex) ?: ""
+            val rawAnswer = fields.getOrNull(mapping.answerFieldIndex) ?: ""
+            val rawExplanation = mapping.explanationFieldIndex?.let { fields.getOrNull(it) } ?: ""
+
+            val optionsList = mapping.optionFieldIndices.mapNotNull { optIdx ->
+                fields.getOrNull(optIdx)?.trim()?.takeIf { it.isNotEmpty() }
+            }
+
+            val front = DeckHierarchyUtils.sanitizeCardHtml(rawFront).trim()
+            val cleanAnswer = DeckHierarchyUtils.sanitizeCardHtml(rawAnswer).trim()
+            val cleanExplanation = DeckHierarchyUtils.sanitizeCardHtml(rawExplanation).trim()
+
+            // Assemble back: Answer | Option1 | Option2 | Option3 | {explain} Explanation
+            val backBuilder = StringBuilder()
+            backBuilder.append(cleanAnswer)
+            if (optionsList.isNotEmpty()) {
+                backBuilder.append(" | ")
+                backBuilder.append(optionsList.joinToString(" | ") { DeckHierarchyUtils.sanitizeCardHtml(it) })
+            }
+            if (cleanExplanation.isNotEmpty()) {
+                backBuilder.append(" {explain} ")
+                backBuilder.append(cleanExplanation)
+            }
+            val back = backBuilder.toString().trim()
+
+            val tags = noteData.tags.split(" ").map { it.trim() }.filter { it.isNotEmpty() }
+
+            if (front.isNotEmpty() && (cleanAnswer.isNotEmpty() || back.isNotEmpty())) {
+                cardsList.add(AnkiFlashcard(cardId, noteId, front, back, tags))
+            }
+        }
         return cardsList
     }
 

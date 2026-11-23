@@ -1029,6 +1029,7 @@ fun ReviewTab(
     var showSnippingDialog by remember { mutableStateOf(false) }
     var showPomodoroBar by remember { mutableStateOf(false) }
     var showBatchMockExamDialog by remember { mutableStateOf(false) }
+    var showAnkiImportDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
     val context = LocalContext.current
@@ -1133,6 +1134,31 @@ fun ReviewTab(
         CreateDeckDialog(
             onConfirm = { name -> onCreateDeck(name); showCreateDialog = false },
             onDismiss = { showCreateDialog = false })
+    }
+    if (showAnkiImportDialog) {
+        AnkiDroidImportDialog(
+            existingDecks = decks,
+            onDismiss = { showAnkiImportDialog = false },
+            onImport = { selectedDeckId, targetHierarchy, dupStrategy, mapping ->
+                showAnkiImportDialog = false
+                coroutineScope.launch {
+                    val count = repo.importAnkiDroidDeckWithMapping(
+                        ankiDeckId = selectedDeckId,
+                        targetDeckHierarchy = targetHierarchy,
+                        duplicateStrategy = dupStrategy,
+                        mapping = mapping
+                    )
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            "Successfully imported $count cards into '$targetHierarchy'",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        onRefresh()
+                    }
+                }
+            }
+        )
     }
 
     addCardNode?.let { node ->
@@ -1503,7 +1529,13 @@ fun ReviewTab(
                         }
                         if (isAnkiInstalled) {
                             Button(
-                                onClick = if (hasPermission) onRefresh else onRequestPermission, 
+                                onClick = {
+                                    if (hasPermission) {
+                                        showAnkiImportDialog = true
+                                    } else {
+                                        onRequestPermission()
+                                    }
+                                }, 
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                                     contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -1512,7 +1544,7 @@ fun ReviewTab(
                             ) {
                                 Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
                                 Spacer(Modifier.width(6.dp))
-                                Text(if (hasPermission) "Sync AnkiDroid" else "Request Permission")
+                                Text(if (hasPermission) "Import AnkiDroid" else "Request Permission")
                             }
                         }
                     }
@@ -2109,6 +2141,20 @@ fun ReviewTab(
                             leadingIcon = { Icon(Icons.Default.PictureAsPdf, null, tint = MaterialTheme.colorScheme.primary) },
                             onClick = { showFabMenu = false; onImportPdfClicked() }
                         )
+                        if (isAnkiInstalled) {
+                            DropdownMenuItem(
+                                text = { Text("Import from AnkiDroid") },
+                                leadingIcon = { Icon(Icons.Default.Sync, null, tint = MaterialTheme.colorScheme.primary) },
+                                onClick = {
+                                    showFabMenu = false
+                                    if (hasPermission) {
+                                        showAnkiImportDialog = true
+                                    } else {
+                                        onRequestPermission()
+                                    }
+                                }
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("Create New Deck") },
                             leadingIcon = { Icon(Icons.Default.CreateNewFolder, null, tint = MaterialTheme.colorScheme.primary) },

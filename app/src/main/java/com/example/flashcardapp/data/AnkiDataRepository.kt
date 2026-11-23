@@ -222,6 +222,84 @@ class AnkiDataRepository(
     }
 
     /**
+     * Selectively imports a single deck from AnkiDroid using custom field mapping and duplicate handling.
+     */
+    suspend fun importAnkiDroidDeckWithMapping(
+        ankiDeckId: Long,
+        targetDeckHierarchy: String,
+        duplicateStrategy: String, // "SKIP", "UPDATE", "IMPORT"
+        mapping: AnkiDroidFieldMapping
+    ): Int = withContext(Dispatchers.IO) {
+        val cleanHierarchy = targetDeckHierarchy.trim()
+        if (cleanHierarchy.isEmpty()) return@withContext 0
+
+        // 1. Ensure target deck exists
+        createDeck(cleanHierarchy)
+        val allDecks = deckDao.getAllDecksOnce()
+        val targetDeck = allDecks.firstOrNull { it.fullPath == cleanHierarchy } ?: return@withContext 0
+
+        // 2. Query cards using dynamic mapping
+        val rawCards = AnkiDroidBridge.getCardsAndNotesWithMapping(context, ankiDeckId, mapping)
+        if (rawCards.isEmpty()) return@withContext 0
+
+        // 3. Process cards with duplicate handling
+        val existingCards = cardDao.getCardsForDeckOnce(targetDeck.id)
+        val existingByFront = existingCards.associateBy { it.front.trim().lowercase() }
+
+        val cardsToInsert = mutableListOf<CardEntity>()
+        val cardsToUpdate = mutableListOf<CardEntity>()
+
+        for (card in rawCards) {
+            val normalizedFront = card.front.trim().lowercase()
+            val existing = existingByFront[normalizedFront]
+
+            when {
+                existing != null && duplicateStrategy == "SKIP" -> {
+                    continue
+                }
+                existing != null && duplicateStrategy == "UPDATE" -> {
+                    cardsToUpdate.add(
+                        existing.copy(
+                            back = card.back,
+                            tags = gson.toJson(card.tags),
+                            lastSyncTimestamp = System.currentTimeMillis()
+                        )
+                    )
+                }
+                else -> {
+                    cardsToInsert.add(
+                        CardEntity(
+                            id = card.cardId,
+                            noteId = card.noteId,
+                            deckId = targetDeck.id,
+                            subDeckId = targetDeck.parentDeckId,
+                            front = card.front,
+                            back = card.back,
+                            tags = gson.toJson(card.tags),
+                            deckHierarchy = cleanHierarchy,
+                            lastSyncTimestamp = System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
+        }
+
+        AppDatabase.getInstance(context).withTransaction {
+            if (cardsToInsert.isNotEmpty()) {
+                cardDao.upsertCards(cardsToInsert)
+            }
+            if (cardsToUpdate.isNotEmpty()) {
+                cardsToUpdate.forEach { cardDao.updateCard(it) }
+            }
+            val finalCount = cardDao.getCardCountForDeck(targetDeck.id)
+            deckDao.updateDeck(targetDeck.copy(cardCount = finalCount))
+        }
+
+        fsrsScheduler.initializeNewCards()
+        return@withContext (cardsToInsert.size + cardsToUpdate.size)
+    }
+
+    /**
      * Resolves the subdeck ID for a card based on its deck hierarchy.
      *
      * If the deck name contains '::', the subdeck is the immediate leaf deck.
