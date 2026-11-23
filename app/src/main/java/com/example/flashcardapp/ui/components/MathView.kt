@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.Placeholder
@@ -62,10 +63,15 @@ fun MathView(
                 text.contains("\\times") || text.contains("\\pm")
     }
 
+    val isDark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+
     if (!hasLatexSyntax) {
-        // Fast path: standard text without LaTeX formulas
+        // Fast path: render rich formatted text (bold, italic, highlight, cloze, colors)
+        val parsed = remember(text, isDark) {
+            RichTextParser.parse(text, isDarkMode = isDark)
+        }
         Text(
-            text = text,
+            text = parsed,
             modifier = modifier,
             style = style,
             color = color
@@ -140,7 +146,8 @@ fun MathView(
                     append(normalizeLatexToUnicode(segment.content))
                 }
             } else {
-                append(segment.content)
+                val parsedSegment = RichTextParser.parse(segment.content, isDarkMode = isDark)
+                append(parsedSegment)
             }
         }
     }

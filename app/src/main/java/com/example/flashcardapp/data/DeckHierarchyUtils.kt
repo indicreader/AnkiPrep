@@ -47,6 +47,52 @@ object DeckHierarchyUtils {
     }
 
     /**
+     * Sanitizes card HTML content:
+     * - Strips outer structural/layout wrappers (html, body, head, style, script, div, p)
+     * - Converts line breaks (<br>, </p>) to clean newlines
+     * - Decodes HTML entities
+     * - PRESERVES semantic inline formatting tags:
+     *   <b>, <strong>, <i>, <em>, <u>, <s>, <del>, <strike>, <mark>, <span>, <font>, <code>, <sub>, <sup>
+     */
+    fun sanitizeCardHtml(html: String): String {
+        var text = html.replace(Regex("(?i)<br\\s*/?>"), "\n")
+        text = text.replace(Regex("(?i)</p>"), "\n\n")
+
+        // Strip script, style blocks completely
+        text = text.replace(Regex("(?is)<(script|style)[^>]*>.*?</\\1>"), "")
+
+        // Strip structural wrapper tags but keep their contents
+        text = text.replace(Regex("(?i)</?(html|body|head|div|p|header|footer|section|article)[^>]*>"), "")
+
+        text = text.replace("&nbsp;", " ")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+
+        // Decode hex entities: &#x[0-9a-fA-F]+;
+        text = text.replace(Regex("(?i)&#x([0-9a-f]+);")) { matchResult ->
+            val hexVal = matchResult.groupValues[1]
+            try {
+                hexVal.toInt(16).toChar().toString()
+            } catch (e: Exception) {
+                matchResult.value
+            }
+        }
+        // Decode decimal entities: &#[0-9]+;
+        text = text.replace(Regex("&#([0-9]+);")) { matchResult ->
+            val decVal = matchResult.groupValues[1]
+            try {
+                decVal.toInt().toChar().toString()
+            } catch (e: Exception) {
+                matchResult.value
+            }
+        }
+        return text.trim()
+    }
+
+    /**
      * Strips HTML tags from a string, converting <br> to newlines
      * and decoding common HTML entities.
      */

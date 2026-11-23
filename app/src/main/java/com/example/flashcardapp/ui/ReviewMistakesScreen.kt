@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -29,6 +30,7 @@ import kotlinx.coroutines.launch
 import com.example.flashcardapp.data.AnkiDataRepository
 import com.example.flashcardapp.data.entities.CardOverrideEntity
 import androidx.compose.material.icons.filled.Edit
+import com.example.flashcardapp.ui.components.MathView
 
 /**
  * Full-screen review of all answered questions from the last quiz session.
@@ -307,12 +309,14 @@ private fun AnswerReviewCard(
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    Text(
+                    MathView(
                         text = record.question.question,
                         color = TextPrimaryDeep,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
+                        style = TextStyle(
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -382,14 +386,14 @@ private fun AnswerReviewCard(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp
                             )
-                            Text(
+                            MathView(
                                 text = option,
                                 color = when {
                                     isCorrectOption -> CorrectColor
                                     isUserChoice -> IncorrectColor
                                     else -> TextSecondaryGray
                                 },
-                                fontSize = 13.sp,
+                                style = TextStyle(fontSize = 13.sp),
                                 modifier = Modifier.weight(1f)
                             )
                             if (isCorrectOption) {
@@ -423,11 +427,13 @@ private fun AnswerReviewCard(
                             fontSize = 12.sp
                         )
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
+                        MathView(
                             text = record.question.explanation,
                             color = TextSecondaryGray,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp
+                            style = TextStyle(
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp
+                            )
                         )
                     }
 

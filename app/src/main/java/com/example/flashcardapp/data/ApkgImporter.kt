@@ -147,20 +147,20 @@ object ApkgImporter {
                         val rawFront = parts.getOrNull(0) ?: ""
                         val rawBack = parts.getOrNull(1) ?: ""
 
-                        var front = DeckHierarchyUtils.stripHtml(rawFront)
-                        val back = DeckHierarchyUtils.stripHtml(rawBack)
+                        var front = DeckHierarchyUtils.sanitizeCardHtml(rawFront)
+                        val back = DeckHierarchyUtils.sanitizeCardHtml(rawBack)
 
                         // Parse tags using TagQuestionUtils
                         val (cleanTags, extractedQ) = com.example.flashcardapp.data.core.TagQuestionUtils.parseAndFilterTags(tagsString)
                         val tagsJson = Gson().toJson(cleanTags)
 
-                        if (front.isEmpty() && extractedQ != null) {
+                        if (DeckHierarchyUtils.stripHtml(front).trim().isEmpty() && extractedQ != null) {
                             front = extractedQ
                         } else {
                             front = com.example.flashcardapp.data.core.TagQuestionUtils.normalizeExtractedQuestion(front)
                         }
 
-                        if (front.isEmpty() || back.isEmpty()) {
+                        if (DeckHierarchyUtils.stripHtml(front).trim().isEmpty() || DeckHierarchyUtils.stripHtml(back).trim().isEmpty()) {
                             continue
                         }
 
