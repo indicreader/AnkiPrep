@@ -101,6 +101,11 @@ object ExamThemeManager {
     var currentTokens by mutableStateOf(PRESET_TACTICAL_DARK)
         private set
 
+    val currentTheme: ExamThemeTokens get() = currentTokens
+    val allThemes: List<ExamThemeTokens> get() = ALL_PRESETS
+
+    fun getAllThemes(context: Context): List<ExamThemeTokens> = ALL_PRESETS + getCustomThemes(context)
+
     private const val PREF_ACTIVE_THEME_KEY = "exam_theme_active_key"
     private const val PREF_CUSTOM_THEMES_JSON = "exam_theme_custom_list_json"
     private val gson = Gson()
@@ -172,10 +177,15 @@ object ExamThemeManager {
         prefs.edit().putString(PREF_CUSTOM_THEMES_JSON, gson.toJson(existing)).apply()
 
         if (currentTokens.key == key) {
-            selectTheme(context, PRESET_TACTICAL_DARK.key)
+            selectTheme(context, PRESET_TCS_ION.key)
         }
     }
 }
+
+/**
+ * Global typealias for ExamThemeManager adhering to Settings Theme Manager architecture.
+ */
+typealias ThemeManager = ExamThemeManager
 
 /**
  * CompositionLocal providing access to current ExamThemeTokens throughout the Compose hierarchy.

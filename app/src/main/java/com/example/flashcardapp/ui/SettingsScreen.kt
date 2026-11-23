@@ -85,6 +85,8 @@ fun SettingsScreen(
 
     var showSyncScreen by remember { mutableStateOf(false) }
     var showWebScraper by remember { mutableStateOf(false) }
+    var studioInitialCreateMode by remember { mutableStateOf(false) }
+    var studioEditTheme by remember { mutableStateOf<com.example.flashcardapp.ui.theme.ExamThemeTokens?>(null) }
 
     if (showSyncScreen) {
         SyncScreen(onBack = { showSyncScreen = false })
@@ -158,8 +160,21 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
+                            SettingsThemeSection(
+                                onOpenThemeStudio = { createMode, themeToEdit ->
+                                    studioInitialCreateMode = createMode
+                                    studioEditTheme = themeToEdit
+                                    navigateTo(SettingsRoute.SubCategory(SettingsCategory.APPEARANCE, SettingsSubCategory.THEME_STUDIO))
+                                }
+                            )
+
+                            HorizontalDivider(
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                                thickness = 1.dp
+                            )
+
                             SettingsCategory.values().forEach { category ->
                                 SettingCategoryCard(
                                     category = category,
@@ -278,7 +293,9 @@ fun SettingsScreen(
                                     useDynamicWallpaper = useDynamicWallpaper,
                                     onUseDynamicWallpaperToggle = onUseDynamicWallpaperToggle,
                                     fontFamilyType = fontFamilyType,
-                                    onFontFamilyTypeChange = onFontFamilyTypeChange
+                                    onFontFamilyTypeChange = onFontFamilyTypeChange,
+                                    initialStudioCreateMode = studioInitialCreateMode,
+                                    initialStudioEditTheme = studioEditTheme
                                 )
                             }
 

@@ -79,14 +79,19 @@ fun AppearanceSubCategoryScreen(
     useDynamicWallpaper: Boolean,
     onUseDynamicWallpaperToggle: (Boolean) -> Unit,
     fontFamilyType: String,
-    onFontFamilyTypeChange: (String) -> Unit
+    onFontFamilyTypeChange: (String) -> Unit,
+    initialStudioCreateMode: Boolean = false,
+    initialStudioEditTheme: com.example.flashcardapp.ui.theme.ExamThemeTokens? = null
 ) {
     val context = LocalContext.current
     val repository = remember { SettingsRepository.getInstance(context) }
 
     when (subCategory) {
         SettingsSubCategory.THEME_STUDIO -> {
-            ThemeStudioScreen()
+            ThemeStudioScreen(
+                initialCreateMode = initialStudioCreateMode,
+                initialEditTheme = initialStudioEditTheme
+            )
         }
         SettingsSubCategory.THEME_SELECTION -> {
             Column(

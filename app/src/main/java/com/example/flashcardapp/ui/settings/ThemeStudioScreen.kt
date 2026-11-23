@@ -38,21 +38,26 @@ import com.example.flashcardapp.ui.theme.LocalExamThemeTokens
  * 3. Color swatch customizer to tweak and persist custom user themes.
  */
 @Composable
-fun ThemeStudioScreen() {
+fun ThemeStudioScreen(
+    initialCreateMode: Boolean = false,
+    initialEditTheme: ExamThemeTokens? = null
+) {
     val context = LocalContext.current
-    var activeTokens by remember { mutableStateOf(ExamThemeManager.currentTokens) }
+    var activeTokens by remember { mutableStateOf(initialEditTheme ?: ExamThemeManager.currentTokens) }
     var customThemes by remember { mutableStateOf(ExamThemeManager.getCustomThemes(context)) }
 
-    var isCreatingCustom by remember { mutableStateOf(false) }
-    var customName by remember { mutableStateOf("My Custom Theme") }
+    var isCreatingCustom by remember { mutableStateOf(initialCreateMode || initialEditTheme != null) }
+    var editingThemeKey by remember { mutableStateOf(initialEditTheme?.key) }
+    var customName by remember { mutableStateOf(initialEditTheme?.displayName ?: "My Custom Theme") }
 
     // Color customization draft
-    var draftAnswered by remember(activeTokens) { mutableStateOf(activeTokens.colorAnswered) }
-    var draftNotAnswered by remember(activeTokens) { mutableStateOf(activeTokens.colorNotAnswered) }
-    var draftMarked by remember(activeTokens) { mutableStateOf(activeTokens.colorMarkedForReview) }
-    var draftNotVisited by remember(activeTokens) { mutableStateOf(activeTokens.colorNotVisited) }
-    var draftSurface by remember(activeTokens) { mutableStateOf(activeTokens.surfaceColor) }
-    var draftRadius by remember(activeTokens) { mutableIntStateOf(activeTokens.buttonCornerRadiusDp) }
+    val baseTokens = initialEditTheme ?: activeTokens
+    var draftAnswered by remember(baseTokens) { mutableStateOf(baseTokens.colorAnswered) }
+    var draftNotAnswered by remember(baseTokens) { mutableStateOf(baseTokens.colorNotAnswered) }
+    var draftMarked by remember(baseTokens) { mutableStateOf(baseTokens.colorMarkedForReview) }
+    var draftNotVisited by remember(baseTokens) { mutableStateOf(baseTokens.colorNotVisited) }
+    var draftSurface by remember(baseTokens) { mutableStateOf(baseTokens.surfaceColor) }
+    var draftRadius by remember(baseTokens) { mutableIntStateOf(baseTokens.buttonCornerRadiusDp) }
 
     LazyColumn(
         modifier = Modifier
@@ -321,7 +326,7 @@ fun ThemeStudioScreen() {
                         ) {
                             Button(
                                 onClick = {
-                                    val newKey = "CUSTOM_" + System.currentTimeMillis()
+                                    val newKey = editingThemeKey ?: ("CUSTOM_" + System.currentTimeMillis())
                                     val newTheme = ExamThemeTokens(
                                         key = newKey,
                                         displayName = customName.ifBlank { "Custom Theme" },
@@ -345,6 +350,7 @@ fun ThemeStudioScreen() {
                                     customThemes = ExamThemeManager.getCustomThemes(context)
                                     activeTokens = newTheme
                                     isCreatingCustom = false
+                                    editingThemeKey = null
                                     Toast.makeText(context, "Saved & Applied!", Toast.LENGTH_SHORT).show()
                                 },
                                 shape = RoundedCornerShape(10.dp),

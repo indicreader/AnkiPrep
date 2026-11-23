@@ -122,12 +122,17 @@ To achieve the highest knowledge retention and peak exam readiness, AnkiPrep is 
 - **Mixed Content & Delimiters:** Seamlessly recognizes both inline equations (`$x^2 + y^2 = r^2$`, `\(...\)`) and full display blocks (`$$...$$`, `\[...\]`).
 - **Theme-Aware Dynamic Colors:** Equations adapt their stroke colors automatically across AMOLED Black, Cyber-Mint, and Light Mode without needing re-parsing.
 
-### 9. Key-Driven Exam Theme Engine & Custom Theme Studio (FEAT-13-15)
+### 9. Key-Driven Exam Theme Engine & Custom Theme Studio (FEAT-13-15 & FEAT-18)
+- **Settings Themes Module (Quick Swatch Selector):** Directly accessible from the main Settings screen:
+  - Live active theme indicator banner with zero-lag hot-swapping across simulation presets and user-created custom palettes.
+  - Interactive 3-dot color swatch previews reflecting `colorAnswered`, `colorNotAnswered`, and `colorMarkedForReview` against authentic container surfaces.
+  - Custom theme management: 1-tap Edit (`✎`) and safe Delete (`🗑`) with automatic fallback to TCS iON.
+  - Dedicated `Create Custom Theme` action tile for launching the Custom Theme Studio.
 - **Authentic Exam Simulation Palettes:** Real-world exam test interface simulations:
   - **TCS iON Console:** Matches official SSC CGL/CHSL, Railway RRB, and Banking interfaces (TCS Green answered, Orange unanswered, Violet flagged for review, 4dp crisp radius).
   - **NTA Console:** Matches official NEET, JEE, and CUET exam software (distinctive green/red/purple status chips, 6dp corner radius).
   - **Tactical Dark & Cyber-Mint:** Ergonomic dark modes built for high-contrast nighttime revision.
-- **Interactive Theme Studio:** Located under **Settings → Appearance → Theme Studio**:
+- **Interactive Theme Studio:** Located under **Settings → Themes / Theme Studio**:
   - **Live Question Widget Preview:** Preview active question cards, status badges, and TeX equations in real-time as you tweak theme properties.
   - **Geometry & Elevation Customization:** Adjust button corner radii (0dp to 24dp) and elevation for tactile touch feedback.
   - **Custom User Themes:** Build, save, apply, and delete personalized palettes persisted locally via local storage.
