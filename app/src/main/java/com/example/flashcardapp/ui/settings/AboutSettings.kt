@@ -2,6 +2,8 @@ package com.example.flashcardapp.ui.settings
 
 import android.content.Context
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -34,6 +36,7 @@ import com.example.flashcardapp.data.SettingsRepository
 import com.example.flashcardapp.data.updater.AppUpdateManager
 import com.example.flashcardapp.data.updater.UpdateStatus
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * Level 1 Screen for About & Legal category.
@@ -114,6 +117,41 @@ fun AboutUsScreen() {
 
     val (currentVersionName, currentVersionCode) = remember { updateManager.getCurrentAppVersion() }
     var updateStatus by remember { mutableStateOf<UpdateStatus>(UpdateStatus.Idle) }
+    var pendingApkFile by remember { mutableStateOf<File?>(null) }
+
+    val installPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        val fileToInstall = pendingApkFile
+        pendingApkFile = null
+        if (fileToInstall != null && updateManager.canInstallPackages()) {
+            updateManager.triggerInstall(fileToInstall)
+        } else if (fileToInstall != null) {
+            Toast.makeText(
+                context,
+                "Please allow 'Install unknown apps' to finish updating.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    fun attemptInstall(apkFile: File) {
+        if (!updateManager.canInstallPackages()) {
+            pendingApkFile = apkFile
+            val permIntent = updateManager.buildInstallPermissionIntent()
+            if (permIntent != null) {
+                try {
+                    installPermissionLauncher.launch(permIntent)
+                } catch (_: Exception) {
+                    updateManager.openInstallPermissionSettings()
+                }
+            } else {
+                updateManager.openInstallPermissionSettings()
+            }
+        } else {
+            updateManager.triggerInstall(apkFile)
+        }
+    }
 
     var tapCount by remember { mutableStateOf(0) }
     var lastTapTime by remember { mutableStateOf(0L) }
@@ -343,7 +381,7 @@ fun AboutUsScreen() {
                                     )
                                     result.onSuccess { apkFile ->
                                         updateStatus = UpdateStatus.ReadyToInstall(apkFile)
-                                        updateManager.triggerInstall(apkFile)
+                                        attemptInstall(apkFile)
                                     }.onFailure { error ->
                                         updateStatus = UpdateStatus.Error(error.localizedMessage ?: "Download failed")
                                     }
@@ -390,7 +428,7 @@ fun AboutUsScreen() {
                     is UpdateStatus.ReadyToInstall -> {
                         Button(
                             onClick = {
-                                updateManager.triggerInstall(status.apkFile)
+                                attemptInstall(status.apkFile)
                             },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
@@ -801,8 +839,7 @@ fun ReleaseNotesScreen() {
 
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .fillMaxWidth()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {

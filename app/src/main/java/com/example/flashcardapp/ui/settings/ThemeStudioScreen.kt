@@ -59,14 +59,14 @@ fun ThemeStudioScreen(
     var draftSurface by remember(baseTokens) { mutableStateOf(baseTokens.surfaceColor) }
     var draftRadius by remember(baseTokens) { mutableIntStateOf(baseTokens.buttonCornerRadiusDp) }
 
-    LazyColumn(
+    Column(
         modifier = Modifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // ── 1. Live Interactive Exam Preview Card ──
-        item {
+        Column {
             Text(
                 text = "Live Exam Simulation Preview",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -159,7 +159,7 @@ fun ThemeStudioScreen(
         }
 
         // ── 2. Official Simulation Presets ──
-        item {
+        Column {
             Text(
                 text = "Official Exam Presets",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -214,7 +214,7 @@ fun ThemeStudioScreen(
 
         // ── 3. Custom Themes List ──
         if (customThemes.isNotEmpty()) {
-            item {
+            Column {
                 Text(
                     text = "My Custom Themes",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -279,7 +279,7 @@ fun ThemeStudioScreen(
         }
 
         // ── 4. Create New Custom Theme ──
-        item {
+        Column {
             if (!isCreatingCustom) {
                 OutlinedButton(
                     onClick = { isCreatingCustom = true },

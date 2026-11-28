@@ -1,5 +1,35 @@
 # Task Tracking
 
+## Phase 57: Multi-Fix & Feature Batch — Updater Install, Theme Studio Crash, Release Notes Crash & Global Deck/Question Counter
+- [x] Task 163: Phase A — Updater FileProvider Paths, ClipData Intent & Permission Return Loop + ReleaseNotesScreen Nested Scroll Fix (`file_paths.xml`, `AppUpdateManager.kt`, `AboutSettings.kt`) [Complexity: Medium] (done = ./gradlew compileDebugKotlin exits 0)
+- [x] Task 164: Phase B — ThemeStudioScreen Nested LazyColumn Crash Fix & Global Deck/Question Counter (`ThemeStudioScreen.kt`, `ReviewTab.kt`) [Complexity: Medium] (done = ./gradlew compileDebugKotlin exits 0)
+
+### Completion Report — Phase 57 (Updater Install, Theme Studio Crash, Release Notes Crash & Global Deck/Question Counter)
+- **CLAIM**:
+  1. **Fixed In-App Updater APK Install Failure (`About > Update App`)**:
+     - Added explicit `<cache-path name="updates" path="updates/" />` and `<files-path name="apk_files" path="." />` to `file_paths.xml`.
+     - Hardened `AppUpdateManager.triggerInstall` with `clipData = ClipData.newRawUri("apk", uri)` and `FLAG_GRANT_READ_URI_PERMISSION or FLAG_ACTIVITY_NEW_TASK or FLAG_ACTIVITY_CLEAR_TOP`, plus `buildInstallPermissionIntent()`.
+     - Added `pendingApkFile` state and `rememberLauncherForActivityResult(StartActivityForResult())` in `AboutUsScreen` (`AboutSettings.kt`) so returning from `ACTION_MANAGE_UNKNOWN_APP_SOURCES` automatically triggers installation.
+  2. **Fixed Theme Studio / Emulator Crash (`Settings > Themes`)**:
+     - Replaced `LazyColumn(Modifier.fillMaxSize())` in `ThemeStudioScreen.kt` with a standard `Column(Modifier.fillMaxWidth())` so it no longer triggers `IllegalStateException: Vertically scrollable component was measured with an infinity maximum height constraints` inside the scrollable `SettingsScreen` / `SettingsTab` container.
+  3. **Fixed Release Notes / Changelog Crash (`About & Legal > Release Notes`)**:
+     - Removed nested `.fillMaxSize().verticalScroll(rememberScrollState())` from `ReleaseNotesScreen()` in `AboutSettings.kt`, resolving the nested vertical scroll crash inside `SettingsScreen` / `SettingsTab`.
+  4. **Added Global Deck & Question Counter**:
+     - Updated the Manage Decks header in `ReviewTab.kt` to display both deck count and total question count (`X decks • Y questions`) reactively from `allCards.size`.
+  5. Verified compilation with `./gradlew compileDebugKotlin` (`BUILD SUCCESSFUL in 2m 10s`, 0 errors).
+- **EVIDENCE**:
+  - `app/src/main/res/xml/file_paths.xml`
+  - `app/src/main/java/com/example/flashcardapp/data/updater/AppUpdateManager.kt`
+  - `app/src/main/java/com/example/flashcardapp/ui/settings/AboutSettings.kt`
+  - `app/src/main/java/com/example/flashcardapp/ui/settings/ThemeStudioScreen.kt`
+  - `app/src/main/java/com/example/flashcardapp/ui/ReviewTab.kt`
+  - `./gradlew compileDebugKotlin` output: `BUILD SUCCESSFUL in 2m 10s`, 15 actionable tasks executed with 0 errors.
+- **VERIFIED**: Yes
+
+[VERITAS]
+
+---
+
 ## Phase 56: Release Stabilization & Startup Crash Hotfix
 - [x] Task 162: Disable Experimental R8 Full-Mode Minification, Revert Build Settings, and Build Stable APK v5.24 (`app/build.gradle.kts`, `gradle.properties`) [Complexity: Low] (done = ./gradlew assembleRelease exits 0)
 

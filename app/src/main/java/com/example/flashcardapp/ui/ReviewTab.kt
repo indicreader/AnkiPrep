@@ -1350,7 +1350,12 @@ fun ReviewTab(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column {
                         Text(com.example.flashcardapp.data.TranslationManager.getString("manage_decks"), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                        Text("${decks.size} deck${if (decks.size == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val totalQuestions = allCards.size
+                        Text(
+                            text = "${decks.size} deck${if (decks.size == 1) "" else "s"} • $totalQuestions question${if (totalQuestions == 1) "" else "s"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
                 Row(
